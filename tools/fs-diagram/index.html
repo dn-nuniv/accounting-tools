@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>B/S・P/L 構成図 v2.3.1（自己資本比率：簡略/原則 切替）</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans JP", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; }
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+    .stack-outer{height:560px}
+    .stack-col{flex:1 1 50%;min-width:0;display:flex;flex-direction:column;justify-content:flex-end}
+    .stack-box{width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:13px;line-height:1.2;color:#1f2937;padding:4px 6px;text-align:center}
+    .lbl-small{font-size:12px}.lbl-tiny{font-size:11px}.lbl-micro{font-size:10px}
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <div class="max-w-7xl mx-auto p-4 md:p-8">
+    <h1 class="text-2xl md:text-3xl font-bold mb-4">B/S・P/L 構成図 v2.3.1</h1>
+
+    <div class="mb-4 flex flex-wrap gap-4 items-center">
+      <div class="flex items-center gap-3">
+        <span class="text-sm font-semibold">表示モード:</span>
+        <label class="inline-flex items-center gap-1 text-sm"><input type="radio" name="mode" value="single" class="accent-sky-600" checked>単社</label>
+        <label class="inline-flex items-center gap-1 text-sm"><input type="radio" name="mode" value="compare" class="accent-sky-600">2社比較</label>
+      </div>
+      <div id="compareTypeBlock" class="hidden flex items-center gap-3">
+        <span class="text-sm font-semibold">比較タイプ:</span>
+        <label class="inline-flex items-center gap-1 text-sm"><input type="radio" name="compareType" value="ratio" class="accent-indigo-600" checked>構成比</label>
+        <label class="inline-flex items-center gap-1 text-sm"><input type="radio" name="compareType" value="scale" class="accent-indigo-600">規模（最大=100）</label>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <!-- INPUT -->
+      <section class="lg:col-span-2 card p-4 md:p-6">
+        <h2 class="text-lg font-semibold mb-2">1. 入力</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="sm:col-span-2"><label class="text-sm text-slate-600">企業名（A）</label><input id="companyA" class="w-full border rounded-lg px-3 py-2" value="A社"></div>
+          <div class="sm:col-span-2"><label class="text-sm text-slate-600">対象年度（A）</label><input id="fiscalA" class="w-full border rounded-lg px-3 py-2" value="2024年3月期"></div>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-3">
+          <div><label class="text-sm text-slate-600 mr-1">単位</label>
+            <select id="unit" class="border rounded-lg px-3 py-2">
+              <option value="千円">千円</option>
+              <option value="百万円">百万円</option>
+              <option value="億円" selected>億円</option>
+            </select>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-sm font-semibold">自己資本比率の計算:</span>
+            <label class="inline-flex items-center gap-1 text-sm"><input type="radio" name="erMode" value="simple" class="accent-sky-600" checked>簡略（純資産/総資産）</label>
+            <label class="inline-flex items-center gap-1 text-sm"><input type="radio" name="erMode" value="principle" class="accent-sky-600">原則（純資産−新株予約権−非支配株主持分）/総資産</label>
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <h3 class="font-semibold mb-1">連結貸借対照表（A）</h3>
+          <div class="grid grid-cols-2 gap-3 bg-slate-50 border rounded-xl p-4">
+            <div><label class="text-sm text-slate-600">流動資産</label><input id="caA" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="467"></div>
+            <div><label class="text-sm text-slate-600">固定資産</label><input id="faA" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="806"></div>
+            <div><label class="text-sm text-slate-600">流動負債</label><input id="clA" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="304"></div>
+            <div><label class="text-sm text-slate-600">固定負債</label><input id="flA" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="162"></div>
+            <div class="col-span-2"><label class="text-sm text-slate-600">純資産</label><input id="naA" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="807"></div>
+            <div class="col-span-2"><label class="text-sm text-slate-600">新株予約権</label><input id="soA" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="0"></div>
+            <div class="col-span-2"><label class="text-sm text-slate-600">非支配株主持分</label><input id="nciA" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="0"></div>
+          </div>
+        </div>
+        <div class="mt-3">
+          <h3 class="font-semibold mb-1">連結損益計算書（A）</h3>
+          <div class="grid grid-cols-2 gap-3 bg-slate-50 border rounded-xl p-4">
+            <div class="col-span-2"><label class="text-sm text-slate-600">売上高</label><input id="salesA" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="2702"></div>
+            <div><label class="text-sm text-slate-600">売上原価</label><input id="cogsA" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="1931"></div>
+            <div><label class="text-sm text-slate-600">販管費</label><input id="sgaA" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="648"></div>
+            <div class="col-span-2"><label class="text-sm text-slate-600">営業利益</label><input id="opA" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="123"></div>
+          </div>
+        </div>
+
+        <!-- B company block -->
+        <div id="companyBBlock" class="mt-8 hidden">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="sm:col-span-2"><label class="text-sm text-slate-600">企業名（B）</label><input id="companyB" class="w-full border rounded-lg px-3 py-2" value="B社"></div>
+            <div class="sm:col-span-2"><label class="text-sm text-slate-600">対象年度（B）</label><input id="fiscalB" class="w-full border rounded-lg px-3 py-2" value="2024年3月期"></div>
+          </div>
+          <div class="mt-3">
+            <h3 class="font-semibold mb-1">連結貸借対照表（B）</h3>
+            <div class="grid grid-cols-2 gap-3 bg-slate-50 border rounded-xl p-4">
+              <div><label class="text-sm text-slate-600">流動資産</label><input id="caB" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="900"></div>
+              <div><label class="text-sm text-slate-600">固定資産</label><input id="faB" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="1100"></div>
+              <div><label class="text-sm text-slate-600">流動負債</label><input id="clB" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="700"></div>
+              <div><label class="text-sm text-slate-600">固定負債</label><input id="flB" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="300"></div>
+              <div class="col-span-2"><label class="text-sm text-slate-600">純資産</label><input id="naB" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="1000"></div>
+              <div class="col-span-2"><label class="text-sm text-slate-600">新株予約権</label><input id="soB" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="0"></div>
+              <div class="col-span-2"><label class="text-sm text-slate-600">非支配株主持分</label><input id="nciB" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="0"></div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <h3 class="font-semibold mb-1">連結損益計算書（B）</h3>
+            <div class="grid grid-cols-2 gap-3 bg-slate-50 border rounded-xl p-4">
+              <div class="col-span-2"><label class="text-sm text-slate-600">売上高</label><input id="salesB" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="5000"></div>
+              <div><label class="text-sm text-slate-600">売上原価</label><input id="cogsB" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="3800"></div>
+              <div><label class="text-sm text-slate-600">販管費</label><input id="sgaB" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="1000"></div>
+              <div class="col-span-2"><label class="text-sm text-slate-600">営業利益</label><input id="opB" type="number" step="0.1" class="w-full border rounded-lg px-3 py-2" value="200"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-6 flex flex-col sm:flex-row gap-3">
+          <button id="btnGenerate" class="rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-semibold px-4 py-2">作図する</button>
+          <button id="btnExport" class="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2 disabled:opacity-40" disabled>PNGで保存</button>
+          <button id="btnReset" class="rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold px-4 py-2">リセット</button>
+        </div>
+        <p id="msg" class="mt-2 text-sm text-rose-600"></p>
+      </section>
+
+      <!-- OUTPUT -->
+      <section class="lg:col-span-3 card p-4 md:p-6">
+        <h2 class="text-lg font-semibold mb-2">2. 生成結果</h2>
+
+        <div id="metaSingle" class="mb-3 hidden">
+          <div id="titleTextS" class="text-xl font-bold"></div>
+          <div id="subtitleTextS" class="text-sm text-slate-500"></div>
+        </div>
+        <div id="metaCompare" class="mb-3 hidden text-center">
+          <div id="titleTextC" class="text-xl font-bold"></div>
+          <div id="subtitleTextC" class="text-sm text-slate-500"></div>
+        </div>
+
+        <div id="captureSingle" class="hidden select-none">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h3 class="font-semibold text-center mb-2">連結貸借対照表（構成比）</h3>
+              <div class="h-[560px] flex items-end"><div id="bsOuterS" class="w-full stack-outer border rounded-xl overflow-hidden bg-white">
+                <div class="h-full flex w-full items-stretch">
+                  <div class="stack-col border-r border-slate-200">
+                    <div id="box-caS" class="stack-box border-b border-sky-200" style="background:#e8f3ff;height:50%">流動資産</div>
+                    <div id="box-faS" class="stack-box" style="background:#cfe6ff;height:50%">固定資産</div>
+                  </div>
+                  <div class="stack-col">
+                    <div id="box-clS" class="stack-box border-b border-pink-200" style="background:#ffe7f0;height:33%">流動負債</div>
+                    <div id="box-flS" class="stack-box border-b border-pink-200" style="background:#ffd1e1;height:17%">固定負債</div>
+                    <div id="box-naS" class="stack-box" style="background:#e8f8ef;height:50%">純資産</div>
+                  </div>
+                </div>
+              </div></div>
+              <div id="legendBsS" class="mt-3"></div>
+            </div>
+            <div>
+              <h3 class="font-semibold text-center mb-2">連結損益計算書（構成比）</h3>
+              <div class="h-[560px] flex items-end"><div id="plOuterS" class="w-full stack-outer border rounded-xl overflow-hidden bg-white">
+                <div class="h-full flex w-full items-stretch">
+                  <div class="stack-col border-r border-amber-200">
+                    <div id="box-cogsS" class="stack-box border-b border-amber-200" style="background:#ffe4bc;height:70%">売上原価</div>
+                    <div id="box-sgaS" class="stack-box border-b border-amber-200" style="background:#ffd38a;height:24%">販管費</div>
+                    <div id="box-opS" class="stack-box" style="background:#fff6bf;height:6%">営業利益</div>
+                  </div>
+                  <div class="stack-col">
+                    <div id="box-salesS" class="stack-box" style="background:#dcf7df;height:100%">売上高（100%）</div>
+                  </div>
+                </div>
+              </div></div>
+              <div id="legendPlS" class="mt-3"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="captureCompare" class="hidden select-none">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <h3 class="font-semibold text-center mb-2"><span id="hdrA" class="text-sky-700">会社A</span> — 連結貸借対照表（構成比）</h3>
+              <div class="h-[560px] flex items-end"><div id="bsOuterA" class="w-full stack-outer border rounded-xl overflow-hidden bg-white">
+                <div class="h-full flex w-full items-stretch">
+                  <div class="stack-col border-r border-slate-200">
+                    <div id="box-caA2" class="stack-box border-b border-sky-200" style="background:#e8f3ff;height:50%">流動資産</div>
+                    <div id="box-faA" class="stack-box" style="background:#cfe6ff;height:50%">固定資産</div>
+                  </div>
+                  <div class="stack-col">
+                    <div id="box-clA" class="stack-box border-b border-pink-200" style="background:#ffe7f0;height:33%">流動負債</div>
+                    <div id="box-flA" class="stack-box border-b border-pink-200" style="background:#ffd1e1;height:17%">固定負債</div>
+                    <div id="box-naA" class="stack-box" style="background:#e8f8ef;height:50%">純資産</div>
+                  </div>
+                </div>
+              </div></div>
+              <div id="legendBsA" class="mt-3"></div>
+            </div>
+            <div>
+              <h3 class="font-semibold text-center mb-2"><span id="hdrB" class="text-rose-700">会社B</span> — 連結貸借対照表（構成比）</h3>
+              <div class="h-[560px] flex items-end"><div id="bsOuterB" class="w-full stack-outer border rounded-xl overflow-hidden bg-white">
+                <div class="h-full flex w-full items-stretch">
+                  <div class="stack-col border-r border-slate-200">
+                    <div id="box-caB2" class="stack-box border-b border-sky-200" style="background:#e8f3ff;height:50%">流動資産</div>
+                    <div id="box-faB" class="stack-box" style="background:#cfe6ff;height:50%">固定資産</div>
+                  </div>
+                  <div class="stack-col">
+                    <div id="box-clB" class="stack-box border-b border-pink-200" style="background:#ffe7f0;height:33%">流動負債</div>
+                    <div id="box-flB" class="stack-box border-b border-pink-200" style="background:#ffd1e1;height:17%">固定負債</div>
+                    <div id="box-naB2" class="stack-box" style="background:#e8f8ef;height:50%">純資産</div>
+                  </div>
+                </div>
+              </div></div>
+              <div id="legendBsB" class="mt-3"></div>
+            </div>
+            <div>
+              <h3 class="font-semibold text-center mb-2">連結損益計算書（構成比）</h3>
+              <div class="h-[560px] flex items-end"><div id="plOuterA" class="w-full stack-outer border rounded-xl overflow-hidden bg-white">
+                <div class="h-full flex w-full items-stretch">
+                  <div class="stack-col border-r border-amber-200">
+                    <div id="box-cogsA" class="stack-box border-b border-amber-200" style="background:#ffe4bc;height:70%">売上原価</div>
+                    <div id="box-sgaA" class="stack-box border-b border-amber-200" style="background:#ffd38a;height:24%">販管費</div>
+                    <div id="box-opA" class="stack-box" style="background:#fff6bf;height:6%">営業利益</div>
+                  </div>
+                  <div class="stack-col">
+                    <div id="box-salesA" class="stack-box" style="background:#dcf7df;height:100%">売上高（100%）</div>
+                  </div>
+                </div>
+              </div></div>
+              <div id="legendPlA" class="mt-3"></div>
+            </div>
+            <div>
+              <h3 class="font-semibold text-center mb-2">連結損益計算書（構成比）</h3>
+              <div class="h-[560px] flex items-end"><div id="plOuterB" class="w-full stack-outer border rounded-xl overflow-hidden bg-white">
+                <div class="h-full flex w-full items-stretch">
+                  <div class="stack-col border-r border-amber-200">
+                    <div id="box-cogsB" class="stack-box border-b border-amber-200" style="background:#ffe4bc;height:70%">売上原価</div>
+                    <div id="box-sgaB" class="stack-box border-b border-amber-200" style="background:#ffd38a;height:24%">販管費</div>
+                    <div id="box-opB" class="stack-box" style="background:#fff6bf;height:6%">営業利益</div>
+                  </div>
+                  <div class="stack-col">
+                    <div id="box-salesB" class="stack-box" style="background:#dcf7df;height:100%">売上高（100%）</div>
+                  </div>
+                </div>
+              </div></div>
+              <div id="legendPlB" class="mt-3"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-8 card p-4">
+          <h3 class="font-semibold mb-2">--- AI解釈用プロンプト ---</h3>
+          <textarea id="promptArea" class="w-full h-56 border rounded p-2 font-mono text-[13px]"></textarea>
+          <div class="mt-2 flex items-center gap-2">
+            <button id="btnCopy" class="px-3 py-2 rounded bg-slate-800 text-white">📋 コピーする</button>
+            <span id="copyMsg" class="text-sm text-slate-500"></span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id)=>document.getElementById(id);
+    const fmt = (n)=> new Intl.NumberFormat('ja-JP').format(Number(n));
+    const pct = (n)=> (Number(n).toFixed(1) + '%');
+
+    const readMainMode = ()=> (document.querySelector('input[name="mode"]:checked')||{}).value || 'single';
+    const readCompareType = ()=> (document.querySelector('input[name="compareType"]:checked')||{}).value || 'ratio';
+    const readErMode = ()=> (document.querySelector('input[name="erMode"]:checked')||{}).value || 'simple';
+
+    const validate = (d)=>{ const TA=d.ca+d.fa, TR=d.cl+d.fl+d.na; const msgs=[]; if(Math.abs(TA-TR)>0.5) msgs.push(`貸借対照表が一致していません：資産合計 ${fmt(TA)} / 負債純資産合計 ${fmt(TR)}`); const pl=d.cogs+d.sga+d.op; if(Math.abs(d.sales-pl)>0.5) msgs.push(`損益計算書が一致していません：費用＋利益合計 ${fmt(pl)} / 売上高 ${fmt(d.sales)}`); return msgs; };
+
+    function labelHTML(name,val,percent,px,unit){ if(px<22){return `<div class="lbl-micro">(${pct(percent)})</div>`;} else if(px<36){return `<div class="lbl-tiny"><div class="font-semibold">${name}</div><div>(${pct(percent)})</div></div>`;} else if(px<64){return `<div class="lbl-small"><div class="font-semibold">${name}</div><div>${fmt(val)} ${unit}</div></div>`;} else {return `<div class="font-semibold">${name}</div><div>${fmt(val)} ${unit}</div><div>(${pct(percent)})</div>`;} }
+
+    const equityRatio = (asset, na, so, nci, mode)=>{ if(!asset) return 0; const num = (mode==='principle') ? (na - so - nci) : na; return num / asset * 100; };
+
+    const readA = ()=>({ company:$('companyA').value.trim()||'—', fiscal:$('fiscalA').value.trim()||'—', ca:+$('caA').value||0, fa:+$('faA').value||0, cl:+$('clA').value||0, fl:+$('flA').value||0, na:+$('naA').value||0, so:+$('soA').value||0, nci:+$('nciA').value||0, sales:+$('salesA').value||0, cogs:+$('cogsA').value||0, sga:+$('sgaA').value||0, op:+$('opA').value||0 });
+    const readB = ()=>({ company:$('companyB').value.trim()||'—', fiscal:$('fiscalB').value.trim()||'—', ca:+$('caB').value||0, fa:+$('faB').value||0, cl:+$('clB').value||0, fl:+$('flB').value||0, na:+$('naB').value||0, so:+$('soB').value||0, nci:+$('nciB').value||0, sales:+$('salesB').value||0, cogs:+$('cogsB').value||0, sga:+$('sgaB').value||0, op:+$('opB').value||0 });
+
+    function setBox(id,name,val,pctv,unit){ const el=$(id); el.style.height=pctv+'%'; const h=el.clientHeight; el.innerHTML=labelHTML(name,val,pctv,h,unit); }
+
+    function legendBsHTML(label, ca, fa, cl, fl, na, unit, erOverride){ const asset=ca+fa; const debt=cl+fl; const er=(erOverride!=null)?erOverride:(asset?na/asset*100:0); return `<div class=\"card p-4\"><h4 class=\"font-semibold text-[17px] mb-2\">【${label}】B/S 明細</h4><p class=\"mb-1\">資産合計：<span class=\"font-bold text-[18px]\">${fmt(asset)} ${unit}</span>（流動 ${fmt(ca)}／固定 ${fmt(fa)}）</p><p class=\"mb-1\">負債合計：<span class=\"font-bold text-[18px]\">${fmt(debt)} ${unit}</span>（流動 ${fmt(cl)}／固定 ${fmt(fl)}）</p><p>純資産：<span class=\"font-bold text-[18px]\">${fmt(na)} ${unit}</span>｜自己資本比率：<span class=\"font-bold\">${pct(er)}</span></p></div>`; }
+    function legendPlHTML(label, sales, cogs, sga, op, unit){ const gp=sales-cogs; const gpr=sales? gp/sales*100:0; const opr=sales? op/sales*100:0; const sgar=sales? sga/sales*100:0; return `<div class=\"card p-4\"><h4 class=\"font-semibold text-[17px] mb-2\">【${label}】P/L 明細</h4><p class=\"mb-1\">売上総利益（粗利）：<span class=\"font-bold text-[18px]\">${fmt(gp)} ${unit}</span>（粗利率 ${pct(gpr)}）</p><p class=\"mb-1\">販管費率：<span class=\"font-bold\">${pct(sgar)}</span></p><p>営業利益率：<span class=\"font-bold\">${pct(opr)}</span></p></div>`; }
+
+    function renderLegendsSingle(d, unit, er){ $('legendBsS').innerHTML = legendBsHTML(d.company,d.ca,d.fa,d.cl,d.fl,d.na,unit,er); $('legendPlS').innerHTML = legendPlHTML(d.company,d.sales,d.cogs,d.sga,d.op,unit); }
+    function renderLegendsCompare(A,B, unit, erA, erB){ $('legendBsA').innerHTML = legendBsHTML(A.company,A.ca,A.fa,A.cl,A.fl,A.na,unit,erA); $('legendBsB').innerHTML = legendBsHTML(B.company,B.ca,B.fa,B.cl,B.fl,B.na,unit,erB); $('legendPlA').innerHTML = legendPlHTML(A.company,A.sales,A.cogs,A.sga,A.op,unit); $('legendPlB').innerHTML = legendPlHTML(B.company,B.sales,B.cogs,B.sga,B.op,unit); }
+    function clearAllLegends(){ ['legendBsS','legendPlS','legendBsA','legendBsB','legendPlA','legendPlB'].forEach(id=>{const el=$(id); if(el) el.innerHTML='';}); }
+
+    function renderSingle(){
+      const unit=$('unit').value; const d=readA(); const err=validate(d);
+      $('msg').textContent = err.join('\n');
+      if(err.length){ $('captureSingle').classList.add('hidden'); $('btnExport').disabled=true; $('metaSingle').classList.add('hidden'); clearAllLegends(); return; }
+      $('metaCompare').classList.add('hidden'); $('metaSingle').classList.remove('hidden');
+      $('titleTextS').textContent=`${d.company}　${d.fiscal}`; $('subtitleTextS').textContent=`単位：${unit}`;
+      const TA=d.ca+d.fa; const caPct=TA?d.ca/TA*100:0, faPct=TA?d.fa/TA*100:0, clPct=TA?d.cl/TA*100:0, flPct=TA?d.fl/TA*100:0, naPct=TA?d.na/TA*100:0; const cogsPct=d.sales?d.cogs/d.sales*100:0, sgaPct=d.sales?d.sga/d.sales*100:0, opPct=d.sales?d.op/d.sales*100:0; const base=560, maxScale=Math.max(TA,d.sales,1); const hBS=Math.round(Math.max(60,base*(TA/maxScale))); const hPL=Math.round(Math.max(60,base*(d.sales/maxScale))); $('bsOuterS').style.height=hBS+'px'; $('plOuterS').style.height=hPL+'px'; $('captureSingle').classList.remove('hidden'); requestAnimationFrame(()=>{ setBox('box-caS','流動資産',d.ca,caPct,unit); setBox('box-faS','固定資産',d.fa,faPct,unit); setBox('box-clS','流動負債',d.cl,clPct,unit); setBox('box-flS','固定負債',d.fl,flPct,unit); setBox('box-naS','純資産',d.na,naPct,unit); setBox('box-cogsS','売上原価',d.cogs,cogsPct,unit); setBox('box-sgaS','販管費',d.sga,sgaPct,unit); setBox('box-opS','営業利益',d.op,opPct,unit); $('box-salesS').innerHTML=`<div class="font-semibold">売上高</div><div class="font-semibold">${fmt(d.sales)} ${unit}</div><div>(100%)</div>`; $('btnExport').disabled=false; const erMode=readErMode(); const er=equityRatio(TA,d.na,d.so,d.nci,erMode); renderLegendsSingle(d,unit,er); $('promptArea').value=buildPromptSingle(unit,d,er,erMode); });
+    }
+
+    function renderCompare(){
+      const unit=$('unit').value; const A=readA(), B=readB(); const errs=[]; validate(A).forEach(m=>errs.push('会社A: '+m)); validate(B).forEach(m=>errs.push('会社B: '+m)); $('msg').textContent=errs.join('\n'); if(errs.length){$('captureCompare').classList.add('hidden');$('btnExport').disabled=true; $('metaCompare').classList.add('hidden'); clearAllLegends(); return;} $('metaSingle').classList.add('hidden'); $('metaCompare').classList.remove('hidden'); $('titleTextC').textContent=`${A.company} vs ${B.company}`; const compareType=readCompareType(); $('subtitleTextC').textContent=(compareType==='ratio')?`比較タイプ：構成比比較`:`比較タイプ：規模比較（最大=100）`; const TAa=A.ca+A.fa, TAb=B.ca+B.fa; const caPctA=TAa?A.ca/TAa*100:0, faPctA=TAa?A.fa/TAa*100:0, clPctA=TAa?A.cl/TAa*100:0, flPctA=TAa?A.fl/TAa*100:0, naPctA=TAa?A.na/TAa*100:0; const caPctB=TAb?B.ca/TAb*100:0, faPctB=TAb?B.fa/TAb*100:0, clPctB=TAb?B.cl/TAb*100:0, flPctB=TAb?B.fl/TAb*100:0, naPctB=TAb?B.na/TAb*100:0; const cogsPctA=A.sales?A.cogs/A.sales*100:0, sgaPctA=A.sales?A.sga/A.sales*100:0, opPctA=A.sales?A.op/A.sales*100:0; const cogsPctB=B.sales?B.cogs/B.sales*100:0, sgaPctB=B.sales?B.sga/B.sales*100:0, opPctB=B.sales?B.op/B.sales*100:0; const base=560; if(compareType==='ratio'){['bsOuterA','plOuterA','bsOuterB','plOuterB'].forEach(id=>{$(id).style.height=base+'px';});} else { const M=Math.max(TAa,A.sales,TAb,B.sales,1); const H=v=>Math.round(Math.max(60,base*(v/M))); $('bsOuterA').style.height=H(TAa)+'px'; $('plOuterA').style.height=H(A.sales)+'px'; $('bsOuterB').style.height=H(TAb)+'px'; $('plOuterB').style.height=H(B.sales)+'px'; } $('captureCompare').classList.remove('hidden'); requestAnimationFrame(()=>{ setBox('box-caA2','流動資産',A.ca,caPctA,unit); setBox('box-faA','固定資産',A.fa,faPctA,unit); setBox('box-clA','流動負債',A.cl,clPctA,unit); setBox('box-flA','固定負債',A.fl,flPctA,unit); setBox('box-naA','純資産',A.na,naPctA,unit); setBox('box-caB2','流動資産',B.ca,caPctB,unit); setBox('box-faB','固定資産',B.fa,faPctB,unit); setBox('box-clB','流動負債',B.cl,clPctB,unit); setBox('box-flB','固定負債',B.fl,flPctB,unit); setBox('box-naB2','純資産',B.na,naPctB,unit); setBox('box-cogsA','売上原価',A.cogs,cogsPctA,unit); setBox('box-sgaA','販管費',A.sga,sgaPctA,unit); setBox('box-opA','営業利益',A.op,opPctA,unit); $('box-salesA').innerHTML=`<div class="font-semibold">売上高</div><div class="font-semibold">${fmt(A.sales)} ${unit}</div><div>(100%)</div>`; setBox('box-cogsB','売上原価',B.cogs,cogsPctB,unit); setBox('box-sgaB','販管費',B.sga,sgaPctB,unit); setBox('box-opB','営業利益',B.op,opPctB,unit); $('box-salesB').innerHTML=`<div class="font-semibold">売上高</div><div class="font-semibold">${fmt(B.sales)} ${unit}</div><div>(100%)</div>`; $('btnExport').disabled=false; const erMode=readErMode(); const erA=equityRatio(TAa,A.na,A.so,A.nci,erMode); const erB=equityRatio(TAb,B.na,B.so,B.nci,erMode); renderLegendsCompare(A,B,unit,erA,erB); $('promptArea').value=buildPromptCompare(unit,A,B,erA,erB,erMode); }); }
+
+    function buildPromptSingle(unit, d, erVal, mode){ const TA=d.ca+d.fa; const gp=d.sales-d.cogs; const cr=d.cl? d.ca/d.cl*100:0; const gpm=d.sales? gp/d.sales*100:0; const opm=d.sales? d.op/d.sales*100:0; const erLabel=(mode==='principle')?'原則':'簡略'; return `--- AI解釈用プロンプト ---\n以下は「${d.company}」の${d.fiscal}の財務データです。\n業種は会社名から推定してください。\n\n初心者向けに、財務構造（短期安全性＝流動比率／長期安全性＝自己資本比率）や収益性の特徴をわかりやすく解説してください。\n\n--- データ ---\n総資産：${fmt(TA)}${unit}（流動 ${fmt(d.ca)}／固定 ${fmt(d.fa)}）\n負債合計：${fmt(d.cl+d.fl)}${unit}（流動 ${fmt(d.cl)}／固定 ${fmt(d.fl)}）\n純資産：${fmt(d.na)}${unit}\n自己資本比率（${erLabel}）：${pct(erVal)}\n流動比率：${pct(cr)}\n\n売上高：${fmt(d.sales)}${unit}\n売上原価：${fmt(d.cogs)}${unit}\n販管費：${fmt(d.sga)}${unit}\n営業利益：${fmt(d.op)}${unit}\n売上総利益率：${pct(gpm)}\n営業利益率：${pct(opm)}\n--------------\n\n【お願いしたいこと】\n1. 財務構造の特徴（短期・長期の安全性を含めて）\n2. 収益性の特徴（粗利率・営業利益率）\n3. 業界平均と比べた強み・弱み\n4. 初心者でも理解できるよう、たとえ話や身近な例を交えて説明する\n\n【最後に】\n初心者がさらに理解を深められるように、\n「他にどんなことを知りたいですか？例えば…」という形で、追加の質問例をいくつか提示してください。\n----------------------------`; }
+
+    function buildPromptCompare(unit, A, B, erA, erB, mode){ const TA=A.ca+A.fa, TB=B.ca+B.fa; const crA=A.cl?A.ca/A.cl*100:0, crB=B.cl?B.ca/B.cl*100:0; const gpmA=A.sales?(A.sales-A.cogs)/A.sales*100:0, gpmB=B.sales?(B.sales-B.cogs)/B.sales*100:0; const opmA=A.sales?A.op/A.sales*100:0, opmB=B.sales?B.op/B.sales*100:0; const erLabel=(mode==='principle')?'原則':'簡略'; return `--- AI解釈用プロンプト ---\n以下は2社（${A.company} と ${B.company}）の財務データです。業種は会社名から推定してください。\n\n初心者向けに、両社の財務構造と収益性の違いをわかりやすく説明し、短期安全性（流動比率）と長期安全性（自己資本比率）にも触れてください。\n\n--- データ（${A.company}） ---\n総資産：${fmt(TA)}${unit}（流動 ${fmt(A.ca)}／固定 ${fmt(A.fa)}）\n負債合計：${fmt(A.cl+A.fl)}${unit}（流動 ${fmt(A.cl)}／固定 ${fmt(A.fl)}）\n純資産：${fmt(A.na)}${unit}／自己資本比率（${erLabel}）：${pct(erA)}／流動比率：${pct(crA)}\n売上高：${fmt(A.sales)}${unit}／売上総利益率：${pct(gpmA)}／営業利益率：${pct(opmA)}\n\n--- データ（${B.company}） ---\n総資産：${fmt(TB)}${unit}（流動 ${fmt(B.ca)}／固定 ${fmt(B.fa)}）\n負債合計：${fmt(B.cl+B.fl)}${unit}（流動 ${fmt(B.cl)}／固定 ${fmt(B.fl)}）\n純資産：${fmt(B.na)}${unit}／自己資本比率（${erLabel}）：${pct(erB)}／流動比率：${pct(crB)}\n売上高：${fmt(B.sales)}${unit}／売上総利益率：${pct(gpmB)}／営業利益率：${pct(opmB)}\n--------------\n\n【お願いしたいこと】\n1. 財務安全性の違い（短期・長期）\n2. 収益性の違い（粗利率・営業利益率）\n3. 規模と安定性のバランス\n4. 業界平均と比べた強み・弱み\n\n【最後に】\n初心者がさらに理解を深められるように、\n「他にどんなことを知りたいですか？例えば…」という形で、追加の質問例をいくつか提示してください。\n----------------------------`; }
+
+    function toggleModeUI(){ const mode=readMainMode(); $('companyBBlock').classList.toggle('hidden', mode!=='compare'); $('compareTypeBlock').classList.toggle('hidden', mode!=='compare'); clearAllLegends(); $('captureSingle').classList.add('hidden'); $('captureCompare').classList.add('hidden'); $('btnExport').disabled=true; $('msg').textContent=''; $('promptArea').value=''; }
+
+    // ---- bootstrap ----
+    window.addEventListener('DOMContentLoaded', ()=>{
+      document.querySelectorAll('input[name="mode"]').forEach(r=>r.addEventListener('change', ()=>{ toggleModeUI(); }));
+      document.querySelectorAll('input[name="erMode"]').forEach(r=>r.addEventListener('change', ()=>{ if(!$('captureSingle').classList.contains('hidden')||!$('captureCompare').classList.contains('hidden')) render(); }));
+      document.querySelectorAll('input[name="compareType"]').forEach(r=>r.addEventListener('change', ()=>{ if(readMainMode()==='compare') render(); }));
+      $('btnGenerate').addEventListener('click', render);
+      $('btnReset').addEventListener('click', ()=>{ location.reload(); });
+      $('btnExport').addEventListener('click', async ()=>{ const mode=readMainMode(); const node=(mode==='compare')?$('captureCompare'):$('captureSingle'); $('btnExport').disabled=true; const canvas=await html2canvas(node,{backgroundColor:'#ffffff',scale:2}); $('btnExport').disabled=false; const compA=($('companyA').value||'A').replace(/\s+/g,'_'); const fyA=($('fiscalA').value||'FY').replace(/\s+/g,'_'); let fname=`BS-PL_${compA}_${fyA}.png`; if(mode==='compare'){ const compB=($('companyB').value||'B').replace(/\s+/g,'_'); const ct=readCompareType()==='ratio'?'ratio':'scale'; fname=`BS-PL_${compA}_vs_${compB}_${ct}.png`; } canvas.toBlob(b=>{ const url=URL.createObjectURL(b); const a=document.createElement('a'); a.href=url; a.download=fname; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },200); }); });
+      $('btnCopy').addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText($('promptArea').value); $('copyMsg').textContent='コピーしました'; }catch{ const ta=$('promptArea'); ta.focus(); ta.select(); document.execCommand('copy'); $('copyMsg').textContent='コピーしました（旧方式）'; } });
+      toggleModeUI();
+    });
+
+    function render(){ (readMainMode()==='compare')?renderCompare():renderSingle(); }
+  </script>
+</body>
+</html>
