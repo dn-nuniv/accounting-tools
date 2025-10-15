@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>キャッシュ・フロー計算書（C/S） 構成図作成アプリ</title>
+<style>
+  :root{
+    --ink:#0f172a; --muted:#475569; --line:#334155; --panel:#ffffff; --bg:#f7fafc;
+    --green:#b7e3b0; --red:#ffc9c9; --box:#cfe9ff;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans JP",sans-serif}
+  .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
+  h1{margin:0 0 12px;font-size:26px}
+  .card{background:var(--panel);border:1px solid #e2e8f0;border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04);margin-bottom:16px}
+  .row{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .field{display:flex;flex-direction:column;gap:6px;min-width:0}
+  label{font-size:12px;color:var(--muted)}
+  input,select,textarea{width:100%;max-width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;font-size:14px}
+  textarea{min-height:120px;line-height:1.5}
+  .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .btn{padding:10px 14px;border-radius:10px;border:none;cursor:pointer;font-weight:600;color:#fff;background:#3b82f6}
+  .btn.secondary{background:#e2e8f0;color:var(--ink)}
+  .btn.ghost{background:#f1f5f9;color:var(--ink)}
+  #stage{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px}
+  svg{display:block;width:100%;height:auto}
+  .t-title{font-size:20px;font-weight:700}
+  .t-h{font-size:18px;font-weight:600}
+  .t-a{font-size:18px}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>キャッシュ・フロー計算書（C/S） 構成図作成アプリ</h1>
+
+  <div class="card">
+    <h2>1. 入力</h2>
+    <div class="row">
+      <div class="field"><label>会社名</label><input id="company" value="〇〇株式会社"></div>
+      <div class="field"><label>年度（西暦）</label><input id="fy" type="number" value="2024"></div>
+      <div class="field"><label>月</label><input id="mon" type="number" value="3"></div>
+      <div class="field"><label>期首残高</label><input id="beg" type="number" step="any" value="100"></div>
+      <div class="field"><label>営業CF（±）</label><input id="cfo" type="number" step="any" value="50"></div>
+      <div class="field"><label>投資CF（±）</label><input id="cfi" type="number" step="any" value="-30"></div>
+      <div class="field"><label>財務CF（±）</label><input id="cff" type="number" step="any" value="10"></div>
+      <div class="field"><label>単位</label>
+        <select id="unit">
+          <option selected>億円</option>
+          <option>百万円</option>
+          <option>千円</option>
+        </select>
+      </div>
+    </div>
+    <div class="btns">
+      <button id="btnDraw" class="btn">作図する</button>
+      <button id="btnReset" class="btn secondary">リセット</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. 生成結果</h2>
+    <div id="stage">
+      <svg id="svg" viewBox="0 0 1100 520" role="img" aria-label="キャッシュフロー構成図"></svg>
+    </div>
+    <div class="btns">
+      <button id="btnSavePNG" class="btn">PNGで保存</button>
+      <button id="btnSaveSVG" class="btn ghost">SVGで保存</button>
+    </div>
+    <div class="hint">※ PNGは2x解像度、白背景でエクスポートします。SVGはCSSを同梱します。</div>
+  </div>
+
+  <div class="card">
+    <h2>3. AI解説プロンプト</h2>
+    <p class="hint">「作図する」を押すと、最新の入力値に基づいたプロンプトが自動生成されます。</p>
+    <textarea id="promptArea" placeholder="ここに自動生成されたプロンプトが入ります。"></textarea>
+    <div class="btns">
+      <button id="btnCopyPrompt" class="btn">プロンプトをコピー</button>
+      <button id="btnResetPrompt" class="btn secondary">プロンプトをリセット（再生成）</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmt=n=>new Intl.NumberFormat('ja-JP').format(Math.abs(Number(n)||0));
+const COL={edge:'#334155',box:'#cfe9ff',inc:'#b7e3b0',dec:'#ffc9c9'};
+const STROKE=2;
+
+function el(svg,name,attrs){const e=document.createElementNS('http://www.w3.org/2000/svg',name);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);svg.appendChild(e);return e;}
+function addText(svg,x,y,txt,cls){const t=el(svg,'text',{x,y,'text-anchor':'middle',class:cls});t.textContent=txt;return t;}
+
+// ---------- 図の描画 ----------
+function render(){
+  const company=$('company').value.trim();
+  const fy=$('fy').value.trim();
+  const mon=$('mon').value.trim();
+  const unit=$('unit').value;
+  const beg=Number($('beg').value||0);
+  const cfo=Number($('cfo').value||0);
+  const cfi=Number($('cfi').value||0);
+  const cff=Number($('cff').value||0);
+  const end=beg+cfo+cfi+cff;
+
+  const svg=$('svg'); while(svg.firstChild) svg.removeChild(svg.firstChild);
+  const VB=svg.viewBox.baseVal; const W=VB.width, H=VB.height;
+
+  // レイアウト
+  const marginX=90, yTop=100, yBot=H-120;
+  const span=W - marginX*2; const N=5; const dx=span/(N-1);
+  const cx=i=>marginX+i*dx; const boxW=120;
+
+  // 目盛り（累積値でスケーリング）
+  const vals=[0,beg,beg+cfo,beg+cfo+cfi,end];
+  const minV=Math.min(0,...vals), maxV=Math.max(...vals);
+  const Y=v=> yBot - ((v-minV)/Math.max(1,(maxV-minV)||1))*(yBot-yTop);
+
+  // タイトル
+  const title=`${company?company+' ':''}${fy?fy+'年':''}${mon?mon+'月期 ':''}キャッシュ・フロー計算書（C/S）`;
+  addText(svg,W/2,36,title,'t-title');
+
+  // ベースライン（0）
+  el(svg,'line',{x1:cx(0)-boxW/2,y1:Y(0),x2:cx(4)+boxW/2,y2:Y(0),stroke:COL.edge,'stroke-width':STROKE});
+
+  // 箱（期首・期末）
+  function box(xc,y0,y1){const x=xc-boxW/2,y=Math.min(y0,y1),h=Math.max(12,Math.abs(y1-y0));el(svg,'rect',{x,y,width:boxW,height:h,fill:COL.box,stroke:COL.edge,'stroke-width':STROKE,rx:6,ry:6});}
+  box(cx(0),Y(0),Y(beg)); if(Math.abs(end)>1e-9) box(cx(4),Y(0),Y(end));
+
+  // 矢印
+  function arrow(xc,y0,y1){const up=y1<y0,dy=Math.abs(y1-y0);const head=Math.min(64,Math.max(dy*0.35,18));const shaft=(boxW*0.6)/2;const sl=xc-shaft,sr=xc+shaft,hl=xc-boxW/2,hr=xc+boxW/2;let pts; if(up){const sh=y1+head;pts=[[sl,y0],[sr,y0],[sr,sh],[hr,sh],[xc,y1],[hl,sh],[sl,sh]];}else{const sh=y1-head;pts=[[sl,y0],[sr,y0],[sr,sh],[hr,sh],[xc,y1],[hl,sh],[sl,sh]];} el(svg,'polygon',{points:pts.map(p=>p.join(',')).join(' '),fill:up?COL.inc:COL.dec,stroke:COL.edge,'stroke-width':STROKE}); }
+  arrow(cx(1),Y(beg),Y(beg+cfo));
+  arrow(cx(2),Y(beg+cfo),Y(beg+cfo+cfi));
+  arrow(cx(3),Y(beg+cfo+cfi),Y(end));
+
+  // 点線
+  function dot(x1,y1,x2,y2){
+    el(svg,'line',{x1,y1,x2,y2,stroke: COL.edge,'stroke-width': STROKE * 0.75,'stroke-dasharray': '5,4','stroke-linecap': 'round'});
+  }
+  const yA=Y(beg), yB=Y(beg+cfo), yC=Y(beg+cfo+cfi), yD=Y(end);
+  dot(cx(0), yA, cx(1), yA);
+  dot(cx(1), yB, cx(2), yB);
+  dot(cx(2), yC, cx(3), yC);
+  dot(cx(3), yD, cx(4), yD);
+
+  // ベースライン下のラベル
+  const yBase = Y(0);
+  const yHdr  = yBase + 28;
+  const yAmt  = yBase + 52;
+  const headers=['期首残高','営業CF','投資CF','財務CF','期末残高'];
+  headers.forEach((h,i)=> addText(svg,cx(i),yHdr,h,'t-h'));
+  const p = v => (v<0?`△${fmt(-v)}`:`+${fmt(v)}`);
+  const amounts=[`${fmt(beg)} ${unit}`,`${p(cfo)} ${unit}`,`${p(cfi)} ${unit}`,`${p(cff)} ${unit}`,`${fmt(end)} ${unit}`];
+  amounts.forEach((a,i)=> addText(svg,cx(i),yAmt,a,'t-a'));
+
+  // プロンプトも生成
+  $('promptArea').value = buildPrompt({company,fy,mon,unit,beg,cfo,cfi,cff,end});
+}
+
+// ---------- プロンプト生成 ----------
+function buildPrompt({company,fy,mon,unit,beg,cfo,cfi,cff,end}){
+  const title = `${company?company+' ':''}${fy?fy+'年':''}${mon?mon+'月期 ':''}キャッシュ・フロー（${unit}）`;
+  const sign = v => v<0?`△${fmt(-v)}`:`+${fmt(v)}`;
+  const fcf = cfo + cfi;
+  const fcfSign = fcf<0?`△${fmt(-fcf)}`:`+${fmt(fcf)}`;
+  const pattern = `${cfo>=0?'+':'−'},${cfi>=0?'+':'−'},${cff>=0?'+':'−'}`;
+
+  const lines = [
+    `# 依頼：キャッシュ・フロー構成図の解説を作成してください`,
+    ``,
+    `## 対象`,
+    `- ${title}`,
+    ``,
+    `## 数値（${unit}）`,
+    `- 期首残高: ${fmt(beg)}`,
+    `- 営業CF: ${sign(cfo)}`,
+    `- 投資CF: ${sign(cfi)}`,
+    `- 財務CF: ${sign(cff)}`,
+    `- フリーキャッシュフロー（営業＋投資）: ${fcfSign}`,
+    `- 期末残高: ${fmt(end)}`,
+    ``,
+    `## 指示`,
+    `1. 営業・投資・財務CFを個別に説明するだけでなく、**相互の関係から何が推測できるか**を述べる。`,
+    `2. フリーキャッシュフロー（営業＋投資）を計算し、その水準と財務CFとの関係から、資金調達・返済・配当との整合性を考察する。`,
+    `   - 例：FCFが＋20で財務CFが＋10 → 自社資金で賄えるのに外部から追加調達している → 将来投資に備えた資金貯蓄など。`,
+    `3. 営業CF・投資CF・財務CFのプラスマイナス組合せ（2×2×2＝8パターン）のうち、今回のパターン（${pattern}）に位置づけ、一般的にどう解釈される傾向があるかも示す。`,
+    `4. 必要に応じて次年度への示唆（資金余力、投資余力、資金繰りの注意点など）を加える。`,
+    ``,
+    `## 形式`,
+    `- 箇条書き中心で300〜500字程度。専門用語は簡単に補足。`
+  ];
+  return lines.join("\n");
+}
+
+// ---------- エクスポート（SVG/PNG） ----------
+function injectStylesIntoSVG(svgNode){
+  const styleText = Array.from(document.querySelectorAll('style')).map(s=>s.textContent).join('\n');
+  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+  const style = document.createElementNS('http://www.w3.org/2000/svg','style');
+  style.setAttribute('type','text/css');
+  style.textContent = styleText;
+  defs.appendChild(style);
+  svgNode.insertBefore(defs, svgNode.firstChild);
+}
+
+function download(filename, blob){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  },0);
+}
+
+function saveSVG(){
+  const svgOriginal = $('svg');
+  const vb = svgOriginal.viewBox.baseVal;
+  const svg = svgOriginal.cloneNode(true);
+  injectStylesIntoSVG(svg);
+  // 明示的に寸法を指定（ブラウザの既定寸法問題を回避）
+  svg.setAttribute('width', vb.width);
+  svg.setAttribute('height', vb.height);
+  const xml = new XMLSerializer().serializeToString(svg);
+  const svgBlob = new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n` + xml], {type:'image/svg+xml;charset=utf-8'});
+  const name = makeBaseName() + '.svg';
+  download(name, svgBlob);
+}
+
+function savePNG(scale=2){
+  const svgOriginal = $('svg');
+  const vb = svgOriginal.viewBox.baseVal;
+
+  // クローンにスタイル埋め込み＋寸法を明示
+  const svgEl = svgOriginal.cloneNode(true);
+  injectStylesIntoSVG(svgEl);
+  svgEl.setAttribute('width', vb.width);
+  svgEl.setAttribute('height', vb.height);
+
+  const xml = new XMLSerializer().serializeToString(svgEl);
+  const svg64 = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+
+  // キャンバスを用意（白背景）
+  const canvas = document.createElement('canvas');
+  canvas.width = vb.width * scale;
+  canvas.height = vb.height * scale;
+  const ctx = canvas.getContext('2d');
+
+  const img = new Image();
+  img.onload = ()=>{
+    // 背景を白で塗ってから描画
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // キャンバスサイズに合わせてドロー（transformは使わない）
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(blob=> download(makeBaseName()+'.png', blob), 'image/png');
+  };
+  // CORS回避フラグ（同一ドキュメント生成のため通常不要だが念のため）
+  img.crossOrigin = 'anonymous';
+  img.src = svg64;
+}
+
+function makeBaseName(){
+  const company=$('company').value.trim() || 'company';
+  const fy=$('fy').value.trim() || 'yyyy';
+  const mon=$('mon').value.trim() || 'mm';
+  return `cs_diagram_${company}_${fy}${String(mon).padStart(2,'0')}`.replace(/[^\w\-]+/g,'_');
+}
+
+// ---------- クリップボード ----------
+async function copyPrompt(){
+  const ta = $('promptArea');
+  ta.select();
+  try{
+    await navigator.clipboard.writeText(ta.value);
+    alert('プロンプトをコピーしました。');
+  }catch(e){
+    document.execCommand('copy');
+    alert('プロンプトをコピーしました。（フォールバック）');
+  }
+}
+
+// ---------- イベント ----------
+$('btnDraw').onclick=render;
+$('btnReset').onclick=()=>{
+  company.value='〇〇株式会社';fy.value=2024;mon.value=3;beg.value=100;cfo.value=50;cfi.value=-30;cff.value=10;unit.value='億円';
+  render();
+};
+
+$('btnSaveSVG').onclick=saveSVG;
+$('btnSavePNG').onclick=()=>savePNG(2);
+
+$('btnCopyPrompt').onclick=copyPrompt;
+$('btnResetPrompt').onclick=()=>{
+  const company=$('company').value.trim();
+  const fy=$('fy').value.trim();
+  const mon=$('mon').value.trim();
+  const unit=$('unit').value;
+  const beg=Number($('beg').value||0);
+  const cfo=Number($('cfo').value||0);
+  const cfi=Number($('cfi').value||0);
+  const cff=Number($('cff').value||0);
+  const end=beg+cfo+cfi+cff;
+  $('promptArea').value = buildPrompt({company,fy,mon,unit,beg,cfo,cfi,cff,end});
+};
+
+// 初期描画
+render();
+</script>
+</body>
+</html>
