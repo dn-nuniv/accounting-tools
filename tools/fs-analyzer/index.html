@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>財務指標タイムライン v1.6.2aa（簡便/厳密・CSV取込・CCC分解・平均基準拡張）</title>
+  <title>財務指標計算アプリ v1.6.2a</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
@@ -49,7 +49,7 @@
 <body class="bg-slate-50 text-slate-800">
   <div class="max-w-7xl mx-auto p-4 md:p-8">
     <header class="mb-6">
-      <h1 class="text-2xl md:text-3xl font-bold tracking-tight">財務指標タイムライン v1.6.2a</h1>
+      <h1 class="text-2xl md:text-3xl font-bold tracking-tight">財務指標アプリ v1.6.2a</h1>
       <p class="text-slate-600 mt-1">
         v1.6 では <span class="font-semibold">簡便モード</span>（合計のみ）・<span class="font-semibold">CSVインポート</span>・
         <span class="font-semibold">入力レイアウト切替（年ごと/科目ごと）</span>・
@@ -181,7 +181,7 @@
         </div>
 
         <div class="mt-6">
-          <div class="bg-white border border-slate-200 rounded-2xl p-4">
+          <div id="chartBox" class="bg-white border border-slate-200 rounded-2xl p-4">
             <canvas id="canvas"></canvas>
           </div>
         </div>
@@ -197,7 +197,7 @@
       </section>
     </div>
 
-    <footer class="mt-8 text-center text-xs text-slate-500">© 2025 財務指標タイムライン v1.6.2a — 簡便/厳密・CSV取込・CCC分解・カテゴリ別プロンプト</footer>
+    <footer class="mt-8 text-center text-xs text-slate-500">© 2025 財務指標アプリ v1.6.2a </footer>
   </div>
 
 <script>
@@ -723,60 +723,83 @@
       tr.innerHTML = '<td class="px-3 py-2 border-b">'+name+'</td>' + arr.map(v=>`<td class="px-3 py-2 text-right border-b">${v==null?'—':(isPercent?fmtNum(v)+'%':fmtNum(v))}</td>`).join('');
       return tr;
     }
-    body.appendChild(trFor(nameA, valsA)); if(valsB) body.appendChild(trFor(nameB, valsB));
+    
+    if(metricKey==='ccc'){
+      const basis='avg';
+      function valsOf(prefix){
+        const series=[]; const detailMode=document.querySelector('input[name="detailMode"]:checked').value; const mode=detailMode==='simple';
+        for(let i=0;i<allYearLabels.length;i++){
+          const r={};
+          r.INV = mode? number($(`inv_total_${prefix}_${i}`).value) : ['inv_merch','inv_finished','inv_raw','inv_wip','inv_semi','inv_supplies'].map(k=>number($(`${k}_${prefix}_${i}`).value)||0).reduce((a,b)=>a+b,0);
+          r.AR  = mode? number($(`ar_total_${prefix}_${i}`).value) : (number($(`ar_trade_${prefix}_${i}`).value)||0)+(number($(`ar_notes_${prefix}_${i}`).value)||0)+(number($(`ar_ermc_${prefix}_${i}`).value)||0);
+          r.AP  = mode? number($(`ap_total_${prefix}_${i}`).value) : (number($(`ap_trade_${prefix}_${i}`).value)||0)+(number($(`ap_notes_${prefix}_${i}`).value)||0)+(number($(`ap_erd_${prefix}_${i}`).value)||0);
+          r.sales = number($(`sales_${prefix}_${i}`).value); r.cogs = number($(`cogs_${prefix}_${i}`).value);
+          series.push(r);
+        }
+        const dso = METRICS.dso.formulaSeries(series,basis).slice(1);
+        const dio = METRICS.dio.formulaSeries(series,basis).slice(1);
+        const dpo = METRICS.dpo.formulaSeries(series,basis).slice(1);
+        const ccc = METRICS.ccc.formulaSeries(series,basis).slice(1);
+        return {dso,dio,dpo,ccc};
+      }
+      const A = valsOf('A');
+      body.appendChild(trFor(nameA+' DSO', A.dso));
+      body.appendChild(trFor(nameA+' DIO', A.dio));
+      body.appendChild(trFor(nameA+' DPO', A.dpo));
+      body.appendChild(trFor(nameA+' CCC', A.ccc));
+      if(valsB){ const B = valsOf('B'); body.appendChild(trFor(nameB+' DSO', B.dso)); body.appendChild(trFor(nameB+' DIO', B.dio)); body.appendChild(trFor(nameB+' DPO', B.dpo)); body.appendChild(trFor(nameB+' CCC', B.ccc)); }
+    } else {
+      body.appendChild(trFor(nameA, valsA)); if(valsB) body.appendChild(trFor(nameB, valsB));
+    }
+
 
     // グラフ
     const ctx = $('canvas'); if(chart){ chart.destroy(); }
-    const datasets = [{ label:nameA, data:valsA, spanGaps:true, tension:0, borderWidth:2, pointRadius:3, borderColor:'#0ea5e9', backgroundColor:'#0ea5e9', type:'line', order:1 }];
-    if(valsB) datasets.push({ label:nameB, data:valsB, spanGaps:true, tension:0, borderWidth:2, pointRadius:3, borderColor:'#f43f5e', backgroundColor:'#f43f5e', type:'line', order:1 });
+    const datasets = [];
+    if(metricKey!=='ccc'){
+      datasets.push({ label:nameA, data:valsA, spanGaps:true, tension:0, borderWidth:2, pointRadius:3, borderColor:'#0ea5e9', backgroundColor:'#0ea5e9', type:'line', order:1 });
+      if(valsB) datasets.push({ label:nameB, data:valsB, spanGaps:true, tension:0, borderWidth:2, pointRadius:3, borderColor:'#f43f5e', backgroundColor:'#f43f5e', type:'line', order:1 });
+    }
 
-    // CCC分解（DSO/DIO/DPO を背景に棒グラフで表示）
+    // CCC分解（水平2段バー：上=DSO→DIO、下=DPO）
     $('cccSplitBadge').classList.add('hidden');
     if(metricKey==='ccc'){
-      const basis = 'avg'; // 固定：期中平均
+      const basis = 'avg'; // 期中平均
       function readSeries(prefix){
-        // DSO/DIO/DPO 用のシリーズ読み直し
-        const series = [];
-        const yoyAll = isYoYMetric('dso') ? buildYears(true) : buildYears(false); // ここでは5年前提
+        const series=[]; const detailMode = document.querySelector('input[name="detailMode"]:checked').value; const modeSimple = detailMode==='simple';
         for(let i=0;i<allYearLabels.length;i++){
-          const r = {};
-          const detailMode = document.querySelector('input[name="detailMode"]:checked').value;
-          const modeSimple = detailMode==='simple';
-          // AR / INV / AP
-          const inv = modeSimple ? number($(`inv_total_${prefix}_${i}`).value) :
-            ['inv_merch','inv_finished','inv_raw','inv_wip','inv_semi','inv_supplies'].map(k=>number($(`${k}_${prefix}_${i}`).value)||0).reduce((a,b)=>a+b,0);
-          const ar = modeSimple ? number($(`ar_total_${prefix}_${i}`).value) :
-            (number($(`ar_trade_${prefix}_${i}`).value)||0) + (number($(`ar_notes_${prefix}_${i}`).value)||0) + (number($(`ar_ermc_${prefix}_${i}`).value)||0);
-          const ap = modeSimple ? number($(`ap_total_${prefix}_${i}`).value) :
-            (number($(`ap_trade_${prefix}_${i}`).value)||0) + (number($(`ap_notes_${prefix}_${i}`).value)||0) + (number($(`ap_erd_${prefix}_${i}`).value)||0);
-          r.AR=ar; r.INV=inv; r.AP=ap; r.sales = number($(`sales_${prefix}_${i}`).value); r.cogs = number($(`cogs_${prefix}_${i}`).value);
+          const r={};
+          r.INV = modeSimple ? number($(`inv_total_${prefix}_${i}`).value) : ['inv_merch','inv_finished','inv_raw','inv_wip','inv_semi','inv_supplies'].map(k=>number($(`${k}_${prefix}_${i}`).value)||0).reduce((a,b)=>a+b,0);
+          r.AR  = modeSimple ? number($(`ar_total_${prefix}_${i}`).value) : (number($(`ar_trade_${prefix}_${i}`).value)||0)+(number($(`ar_notes_${prefix}_${i}`).value)||0)+(number($(`ar_ermc_${prefix}_${i}`).value)||0);
+          r.AP  = modeSimple ? number($(`ap_total_${prefix}_${i}`).value) : (number($(`ap_trade_${prefix}_${i}`).value)||0)+(number($(`ap_notes_${prefix}_${i}`).value)||0)+(number($(`ap_erd_${prefix}_${i}`).value)||0);
+          r.sales = number($(`sales_${prefix}_${i}`).value); r.cogs = number($(`cogs_${prefix}_${i}`).value);
           series.push(r);
         }
         return series;
       }
-      function seriesToVals(series, kind){
-        // kind: dso/dio/dpo
-        const tmpMetric = METRICS[kind];
-        // tmpMetric.formulaSeries expects exact years array length; if YoY metric length differs, we use allYearLabels and slice head when needed
-        const arr = tmpMetric.formulaSeries(series, basis);
-        return yoy ? arr.slice(1) : arr;
+      function valsOf(prefix){
+        const ser = readSeries(prefix);
+        const fullDSO = METRICS.dso.formulaSeries(ser, basis);
+        const fullDIO = METRICS.dio.formulaSeries(ser, basis);
+        const fullDPO = METRICS.dpo.formulaSeries(ser, basis);
+        // years は先頭を落としているので合わせる
+        const cut = fullDSO.slice(1).map(v=>v==null?null:+v);
+        const cut2= fullDIO.slice(1).map(v=>v==null?null:+v);
+        const cut3= fullDPO.slice(1).map(v=>v==null?null:+v);
+        return {dso:cut, dio:cut2, dpo:cut3};
       }
-      const serA = readSeries('A');
-      const dsoA = seriesToVals(serA,'dso'), dioA = seriesToVals(serA,'dio'), dpoA = seriesToVals(serA,'dpo').map(v=> v==null? null : -v); // DPOはマイナスで可視化
+      const A = valsOf('A');
       datasets.unshift(
-        { label:'DSO(A)', data:dsoA, type:'bar', backgroundColor:'rgba(14,165,233,0.25)', borderColor:'rgba(14,165,233,0.3)', stack:'cccA', order:0 },
-        { label:'DIO(A)', data:dioA, type:'bar', backgroundColor:'rgba(34,197,94,0.25)', borderColor:'rgba(34,197,94,0.3)', stack:'cccA', order:0 },
-        { label:'-DPO(A)', data:dpoA, type:'bar', backgroundColor:'rgba(244,63,94,0.25)', borderColor:'rgba(244,63,94,0.3)', stack:'cccA', order:0 }
+        { label:'DSO(A)', data:A.dso, type:'bar', backgroundColor:'rgba(14,165,233,0.25)', borderColor:'rgba(14,165,233,0.3)', stack:'topA', order:0 },
+        { label:'DIO(A)', data:A.dio, type:'bar', backgroundColor:'rgba(34,197,94,0.25)', borderColor:'rgba(34,197,94,0.3)', stack:'topA', order:0 },
+        { label:'DPO(A)', data:A.dpo, type:'bar', backgroundColor:'rgba(244,63,94,0.25)', borderColor:'rgba(244,63,94,0.3)', stack:'bottomA', order:0 }
       );
-      if(is2){
-        const serB = readSeries('B');
-        const dsoB = seriesToVals(serB,'dso'), dioB = seriesToVals(serB,'dio'), dpoB = seriesToVals(serB,'dpo').map(v=> v==null? null : -v);
+      if(is2){ const B = valsOf('B');
         datasets.unshift(
-          { label:'DSO(B)', data:dsoB, type:'bar', backgroundColor:'rgba(14,165,233,0.15)', borderColor:'rgba(14,165,233,0.2)', stack:'cccB', order:0 },
-          { label:'DIO(B)', data:dioB, type:'bar', backgroundColor:'rgba(34,197,94,0.15)', borderColor:'rgba(34,197,94,0.2)', stack:'cccB', order:0 },
-          { label:'-DPO(B)', data:dpoB, type:'bar', backgroundColor:'rgba(244,63,94,0.15)', borderColor:'rgba(244,63,94,0.2)', stack:'cccB', order:0 }
-        );
-      }
+          { label:'DSO(B)', data:B.dso, type:'bar', backgroundColor:'rgba(14,165,233,0.15)', borderColor:'rgba(14,165,233,0.2)', stack:'topB', order:0 },
+          { label:'DIO(B)', data:B.dio, type:'bar', backgroundColor:'rgba(34,197,94,0.15)', borderColor:'rgba(34,197,94,0.2)', stack:'topB', order:0 },
+          { label:'DPO(B)', data:B.dpo, type:'bar', backgroundColor:'rgba(244,63,94,0.15)', borderColor:'rgba(244,63,94,0.2)', stack:'bottomB', order:0 }
+        ); }
       $('cccSplitBadge').classList.remove('hidden');
     }
 
@@ -785,10 +808,9 @@
       data: { labels: years, datasets },
       options: {
         responsive: true, maintainAspectRatio: true, aspectRatio: 2,
+        indexAxis: (metricKey==='ccc' ? 'y' : 'x'),
         elements: { line: { tension: 0 } },
-        scales: {
-          y: { beginAtZero: true, stacked: true } // CCC分解棒はstacked、ラインは影響なし
-        },
+        scales: (metricKey==='ccc' ? { x:{ beginAtZero:true, stacked:true }, y:{ stacked:true } } : { y:{ beginAtZero:true, stacked:true } }),
         plugins: {
           legend: { position: 'top' },
           title: { display: true, text: `${metricName}（${years.length}年推移）` },
@@ -799,7 +821,7 @@
             color: '#334155',
             formatter: (v, ctx) => {
               const ds = ctx.dataset;
-              // 棒グラフはデータラベルを出しすぎない
+              if(ds.type==='bar' && metricKey==='ccc') return (v==null? '' : fmtNum(v)+'日');
               if(ds.type==='bar') return '';
               return (v == null ? '' : ( (unit==='%'? fmtNum(v)+'%' : fmtNum(v)) ));
             }
@@ -807,7 +829,7 @@
           tooltip: {
             callbacks: {
               label: (c)=>{
-                const v=c.parsed.y;
+                const v = (chart && chart.options && chart.options.indexAxis==='y') ? c.parsed.x : c.parsed.y;
                 const label = c.dataset.label || '';
                 if(v==null) return `${label}: —`;
                 return `${label}: ${unit==='%'? fmtNum(v)+'%': fmtNum(v)}`;
@@ -819,6 +841,31 @@
     });
 
     $('btnCsv').disabled=false; $('btnPng').disabled=false; $('btnSvg').disabled=false;
+    // CCC overlay text (no arrows)
+    (function(){
+      const host = document.getElementById('chartBox');
+      if(!host) return;
+      host.style.position='relative';
+      host.querySelectorAll('.ccc-overlay').forEach(el=>el.remove());
+      if(metricKey!=='ccc') return;
+      const x = chart.scales.x, y = chart.scales.y;
+      const top = chart.data.datasets.filter(d=> d.stack && d.stack.startsWith('top'));
+      const bottom = chart.data.datasets.filter(d=> d.stack && d.stack.startsWith('bottom'));
+      if(top.length===0 || bottom.length===0) return;
+      const sumTop = (idx)=> top.reduce((a,d)=> a + (Number(d.data[idx])||0), 0);
+      const n = chart.data.labels.length;
+      for(let i=0;i<n;i++){
+        const t = sumTop(i), b = Number(bottom[0].data[i] ?? 0);
+        if(!(t>0 && b>0)) continue;
+        const left = x.getPixelForValue(Math.min(t,b)), right = x.getPixelForValue(Math.max(t,b));
+        const yC = y.getPixelForValue(chart.data.labels[i]);
+        const div = document.createElement('div'); div.className='ccc-overlay';
+        Object.assign(div.style,{position:'absolute', left:`${(left+right)/2 - 36}px`, top:`${yC-7}px`, width:'72px', height:'14px', textAlign:'center', fontSize:'12px', color:'#0f172a', pointerEvents:'none'});
+        const ccc = t - b; div.textContent = `CCC ${(ccc>=0?'+':'')}${fmtNum(ccc)}日`;
+        host.appendChild(div);
+      }
+    })();
+
 
     // AIプロンプト（カテゴリ連動）
     const ser = (arr)=> arr.map((v,i)=>`${years[i]}=${v==null?'NA':(unit==='%'?fmtNum(v)+'%':fmtNum(v)+(unit==='日'?'日':''))}`).join(', ');
