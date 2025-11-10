@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>財務指標タイムライン v1.6.2aa（簡便/厳密・CSV取込・CCC分解・平均基準拡張）</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+  <script>
+  // 固定の白背景（PNG出力時の透過対策）
+  const whiteBgPlugin = {
+    id: "whiteBg",
+    beforeDraw(chart){
+      const {ctx, width, height} = chart;
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-over";
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0,0,width,height);
+      ctx.restore();
+    }
+  };
+  </script>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; }
+    .card { background: white; border-radius: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); border: 1px solid rgb(226 232 240); }
+    .section-title { color: rgb(30 41 59); font-weight: 600; font-size: 1.125rem; }
+    .field-label { color: rgb(71 85 105); font-weight: 500; font-size: 0.875rem; }
+    .field { width: 100%; border-radius: .6rem; border: 1px solid rgb(203 213 225); padding: .65rem .85rem; outline: none; font-size: 0.95rem; }
+    .field:focus { box-shadow: 0 0 0 2px rgb(56 189 248 / .6); border-color: rgb(56 189 248); }
+    .hint { font-size: .75rem; color: rgb(100 116 139); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border-radius: .75rem; font-weight: 700; padding: .5rem 1rem; }
+    .pill { display:inline-flex; align-items:center; gap:.5rem; padding:.25rem .5rem; border-radius:.5rem; background: rgb(241 245 249); color: rgb(30 41 59); font-size:.75rem; }
+    .formula { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: .75rem; padding: .5rem .75rem; font-size: .875rem; color: #334155; }
+    .subtle { color:#64748b; font-size:12px; }
+    table.input-grid th, table.input-grid td { border-bottom: 1px solid #e2e8f0; padding: .5rem .625rem; }
+    table.input-grid th { background:#f8fafc; text-align:center; color:#475569; font-weight:600; }
+    table.input-grid td:first-child { white-space:nowrap; font-weight:600; color:#334155; }
+    #inputsA, #inputsB { overflow-x: auto; max-width: 100%; }
+    table.input-grid td input.field { width: 100%; height: 42px; min-width: 0; font-size: 0.95rem; }
+    table.input-grid th { position: sticky; top: 0; z-index: 1; }
+    @media (min-width: 1024px){
+      /* widen cards */
+      .card { padding: 1.25rem 1.5rem; }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <div class="max-w-7xl mx-auto p-4 md:p-8">
+    <header class="mb-6">
+      <h1 class="text-2xl md:text-3xl font-bold tracking-tight">財務指標タイムライン v1.6.2a</h1>
+      <p class="text-slate-600 mt-1">
+        v1.6 では <span class="font-semibold">簡便モード</span>（合計のみ）・<span class="font-semibold">CSVインポート</span>・
+        <span class="font-semibold">入力レイアウト切替（年ごと/科目ごと）</span>・
+        <span class="font-semibold">CCC分解（DSO/DIO/DPO）の同時描画</span>・<span class="font-semibold">指標カテゴリ連動のAIプロンプト</span>を追加。
+      </p>
+    </header>
+
+    <div class="grid grid-cols-1 gap-6">
+      <section class="card p-4 md:p-6">
+        <h2 class="section-title mb-4">1. 入力 & 設定</h2>
+
+        <div class="mb-3 flex flex-wrap items-center gap-4">
+          <div>
+            <span class="text-sm font-semibold text-slate-700">会社数:</span>
+            <label class="inline-flex items-center gap-2 text-sm ml-2"><input type="radio" name="modeManual" value="single" class="accent-sky-600" checked> 1社</label>
+            <label class="inline-flex items-center gap-2 text-sm ml-4"><input type="radio" name="modeManual" value="compare" class="accent-sky-600"> 2社</label>
+          </div>
+          </div>
+
+        <div class="mb-3 flex flex-wrap items-center gap-4">
+          <div>
+            <span class="text-sm font-semibold text-slate-700">入力モード:</span>
+            <label class="inline-flex items-center gap-2 text-sm ml-2"><input type="radio" name="detailMode" value="strict" class="accent-sky-600" checked> 厳密（内訳入力）</label>
+            <label class="inline-flex items-center gap-2 text-sm ml-4"><input type="radio" name="detailMode" value="simple" class="accent-sky-600"> 簡便（合計のみ）</label>
+          </div>
+          <div>
+            <span class="text-sm font-semibold text-slate-700">入力レイアウト:</span>
+            <select id="layout" class="field inline-block w-[180px] align-middle">
+              <option value="yearFirst">年ごと（推奨）</option>
+              <option value="itemFirst">科目ごと（従来）</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="sm:col-span-2">
+            <label class="field-label" for="metricManual">指標</label>
+            <select id="metricManual" class="field w-full"></select>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <div id="metricFormula" class="formula grow" aria-live="polite"></div>
+              <span id="yoyBadge" class="pill hidden">YoY＝前年比（Year over Year）</span>
+            </div>
+            <p class="hint mt-1">成長性（YoY）および回転日数・ROA/ROE/ROICは 6年入力→5年出力。それ以外は5年。</p>
+          </div>
+          <div>
+            <label class="field-label" for="unitManual">金額の単位</label>
+            <select id="unitManual" class="field w-full">
+              <option value="千円">千円</option><option value="百万円" selected>百万円</option><option value="億円">億円</option>
+            </select>
+          </div>
+
+          <div class="sm:col-span-2">
+            <label class="field-label" for="latestYear">最新期（YYYY）</label>
+            <input id="latestYear" class="field w-full text-center" placeholder="2024" inputmode="numeric" maxlength="4"/>
+            <p class="hint mt-1">非YoY指標は「最新期−4〜最新期」、YoYは「最新期−5〜最新期」。</p>
+          </div>
+        </div>
+
+        <!-- Company A -->
+        <div class="mt-6">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-sky-500"></div><h3 class="section-title">会社A</h3></div>
+            <div class="flex items-center gap-2">
+              <label class="btn bg-emerald-50 text-emerald-700 cursor-pointer">
+                CSV取込A<input id="csvA" type="file" accept=".csv" class="hidden"/>
+              </label>
+              <button id="csvTplA" class="btn bg-slate-200 text-slate-800 text-sm">テンプレDL</button>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
+            <div class="sm:col-span-2"><label class="field-label" for="companyA">企業名</label><input id="companyA" class="field" placeholder="会社A" /></div>
+          </div>
+          <div id="inputsA" class="space-y-3"></div>
+        </div>
+
+        <!-- Company B -->
+        <div id="companyBBlock" class="mt-8 hidden">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-rose-500"></div><h3 class="section-title">会社B</h3></div>
+            <div class="flex items-center gap-2">
+              <label class="btn bg-emerald-50 text-emerald-700 cursor-pointer">
+                CSV取込B<input id="csvB" type="file" accept=".csv" class="hidden"/>
+              </label>
+              <button id="csvTplB" class="btn bg-slate-200 text-slate-800 text-sm">テンプレDL</button>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
+            <div class="sm:col-span-2"><label class="field-label" for="companyB">企業名</label><input id="companyB" class="field" placeholder="会社B" /></div>
+          </div>
+          <div id="inputsB" class="space-y-3"></div>
+        </div>
+
+        <div class="mt-6 flex flex-col sm:flex-row gap-3">
+          <button id="btnCalc" class="btn bg-sky-600 hover:bg-sky-700 text-white">計算する</button>
+          <button id="btnCsv" class="btn bg-emerald-600 hover:bg-emerald-700 text-white" disabled>CSVで保存</button>
+          <button id="btnPng" class="btn bg-indigo-600 hover:bg-indigo-700 text-white" disabled>グラフPNG保存</button>
+          <button id="btnSvg" class="btn bg-fuchsia-600 hover:bg-fuchsia-700 text-white" disabled>グラフSVG保存</button>
+          <button id="btnReset" class="btn bg-slate-200 hover:bg-slate-300 text-slate-800">リセット</button>
+        </div>
+        <p id="msg" class="mt-3 text-sm font-medium text-rose-600"></p>
+      </section>
+
+      <section class="card p-4 md:p-6">
+        <h2 class="section-title mb-4">2. 結果</h2>
+
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <span class="pill"><span id="metaMetric">—</span></span>
+          <span class="pill">表示単位: <span id="metaUnit">—</span></span>
+          <span class="pill">データソース: <span id="metaSrc">手入力</span></span>
+          <span id="cccSplitBadge" class="pill hidden">CCC分解表示中</span>
+        </div>
+
+        <div id="resultBlock" class="hidden">
+          <div class="overflow-x-auto">
+            <table id="tbl" class="min-w-full text-sm">
+              <thead>
+                <tr class="bg-slate-50 text-slate-600">
+                  <th class="px-3 py-2 text-left border-b">会社</th>
+                  <th class="px-3 py-2 text-right border-b" id="th0"></th>
+                  <th class="px-3 py-2 text-right border-b" id="th1"></th>
+                  <th class="px-3 py-2 text-right border-b" id="th2"></th>
+                  <th class="px-3 py-2 text-right border-b" id="th3"></th>
+                  <th class="px-3 py-2 text-right border-b" id="th4"></th>
+                </tr>
+              </thead>
+              <tbody id="tblBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="mt-6">
+          <div class="bg-white border border-slate-200 rounded-2xl p-4">
+            <canvas id="canvas"></canvas>
+          </div>
+        </div>
+
+        <div class="mt-6">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="section-title">3. AI解釈プロンプト</h3>
+            <button id="btnCopy" class="btn bg-slate-800 hover:bg-slate-900 text-white text-sm">コピー</button>
+          </div>
+          <textarea id="aiPrompt" rows="8" class="field w-full" placeholder="計算後に自動生成されます"></textarea>
+          <p class="hint mt-1">そのままAIに貼り付けて解釈させてください。</p>
+        </div>
+      </section>
+    </div>
+
+    <footer class="mt-8 text-center text-xs text-slate-500">© 2025 財務指標タイムライン v1.6.2a — 簡便/厳密・CSV取込・CCC分解・カテゴリ別プロンプト</footer>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const number = (v) => {
+    if (v === undefined || v === null) return null;
+    const s = String(v).replace(/,/g, '').trim();
+    return (s === '' || isNaN(Number(s))) ? null : Number(s);
+  };
+  const fmtNum = (n, d=1) => new Intl.NumberFormat('ja-JP', { maximumFractionDigits: d }).format(Number(n));
+  function div(a,b){ if(a==null || b==null || b===0) return null; return a/b; }
+  function pct(x){ if(x==null || !isFinite(x)) return null; return x*100; }
+  function val(x){ if(x==null || !isFinite(x)) return null; return x; }
+  function avg(a,b){ if(a==null || b==null) return null; return (a+b)/2; }
+
+  // 自己資本（内生化）
+  function equityFrom(r){
+    if(r==null) return null;
+    const na = r.netassets, w = (r.warrants||0), m = (r.minority||0);
+    if(na==null) return null;
+    return na - w - m;
+  }
+
+  // 合計系
+  function arFrom(r, modeSimple){
+    if(modeSimple) return r.ar_total ?? null;
+    return (r.ar_trade||0)+(r.ar_notes||0)+(r.ar_ermc||0);
+  }
+  function apFrom(r, modeSimple){
+    if(modeSimple) return r.ap_total ?? null;
+    return (r.ap_trade||0)+(r.ap_notes||0)+(r.ap_erd||0);
+  }
+  function invFrom(r, modeSimple){
+    if(modeSimple) return r.inv_total ?? null;
+    return ['inv_merch','inv_finished','inv_raw','inv_wip','inv_semi','inv_supplies']
+      .map(k => r[k]??0)
+      .reduce((a,b)=> (a==null||b==null)? null : a+b, 0);
+  }
+
+  // 年度配列を生成
+  function buildYears(isYoY){
+    const latest = parseInt(($('latestYear').value||'').trim(), 10);
+    const nowarn = isNaN(latest) || String(latest).length!==4;
+    const mkey = $('metricManual').value; const count = needsPrevYear(mkey) ? 6 : 5;
+    const arr = [];
+    for(let i=count-1;i>=0;i--){
+      arr.push(nowarn ? `Y${count-i}` : String(latest - i));
+    }
+    return arr;
+  }
+  function isYoYMetric(key){ const def=METRICS[key]; return !!(def.yoyOf || def.yoyOfEq || def.yoyOfInventories); }
+  function needsPrevYear(key){
+    // 非YoYでも前期値を必要とする指標（回転日数と投下資本利益率系）
+    return ['dso','dio','dpo','ccc','roa','roe','roic'].includes(key) || isYoYMetric(key);
+  }
+
+  // 指標定義
+  const METRICS = {
+    // 効率性：回転日数・CCC
+    dso: { group:'効率性', name:'売上債権回転日数（DSO）', unit:'日', need:['sales','AR'], formulaSeries:(series, basis)=>{
+      const res=[];
+      for(let i=0;i<series.length;i++){
+        const cur=series[i], prev=series[i-1];
+        const curAR = cur.AR, prevAR = prev? prev.AR : null;
+        const baseAR = (basis==='end')? curAR : avg(curAR, prevAR);
+        res.push( (baseAR==null || cur.sales==null || cur.sales===0) ? null : 365 * (baseAR / cur.sales) );
+      }
+      return res;
+    }},
+    dio: { group:'効率性', name:'棚卸資産回転日数（DIO）', unit:'日', need:['cogs','INV'], formulaSeries:(series, basis)=>{
+      const res=[];
+      for(let i=0;i<series.length;i++){
+        const cur=series[i], prev=series[i-1];
+        const curInv = cur.INV, prevInv = prev? prev.INV : null;
+        const baseInv = (basis==='end')? curInv : avg(curInv, prevInv);
+        res.push( (baseInv==null || cur.cogs==null || cur.cogs===0) ? null : 365 * (baseInv / cur.cogs) );
+      }
+      return res;
+    }},
+    dpo: { group:'効率性', name:'仕入債務回転日数（DPO）', unit:'日', need:['cogs','INV','AP'], formulaSeries:(series, basis)=>{
+      const res=[];
+      for(let i=0;i<series.length;i++){
+        const cur=series[i], prev=series[i-1];
+        const curInv = cur.INV, prevInv = prev? prev.INV : null;
+        const deltaInv = (curInv==null || prevInv==null) ? null : (curInv - prevInv);
+        const purchases = (cur.cogs==null || deltaInv==null) ? null : (cur.cogs + deltaInv);
+        const curAP = cur.AP, prevAP = prev? prev.AP : null;
+        const baseAP = (basis==='end')? curAP : avg(curAP, prevAP);
+        res.push( (baseAP==null || purchases==null || purchases===0) ? null : 365 * (baseAP / purchases) );
+      }
+      return res;
+    }},
+    ccc: { group:'効率性', name:'キャッシュ・コンバージョン・サイクル（CCC）', unit:'日', need:['sales','cogs','AR','INV','AP'], formulaSeries:(series, basis)=>{
+      const res=[];
+      for(let i=0;i<series.length;i++){
+        const cur=series[i], prev=series[i-1];
+        // DSO
+        const curAR = cur.AR, prevAR = prev? prev.AR : null;
+        const baseAR = (basis==='end')? curAR : avg(curAR, prevAR);
+        const dso = (baseAR==null || cur.sales==null || cur.sales===0) ? null : 365 * (baseAR / cur.sales);
+        // DIO
+        const curInv = cur.INV, prevInv = prev? prev.INV : null;
+        const baseInv = (basis==='end')? curInv : avg(curInv, prevInv);
+        const dio = (baseInv==null || cur.cogs==null || cur.cogs===0) ? null : 365 * (baseInv / cur.cogs);
+        // DPO（仕入は COGS + ΔINV）
+        const deltaInv = (curInv==null || prevInv==null) ? null : (curInv - prevInv);
+        const purchases = (cur.cogs==null || deltaInv==null) ? null : (cur.cogs + deltaInv);
+        const curAP = cur.AP, prevAP = prev? prev.AP : null;
+        const baseAP = (basis==='end')? curAP : avg(curAP, prevAP);
+        const dpo = (baseAP==null || purchases==null || purchases===0) ? null : 365 * (baseAP / purchases);
+        res.push( (dso==null || dio==null || dpo==null) ? null : dso + dio - dpo );
+      }
+      return res;
+    }},
+
+    // 既存主要指標（抜粋）
+    gpm: { group:'収益性', name:'売上総利益率', unit:'%', need:['sales','cogs'], formula:(r)=> pct(div(r.sales - r.cogs, r.sales)) },
+    opm: { group:'収益性', name:'売上高営業利益率', unit:'%', need:['op','sales'], formula:(r)=> pct(div(r.op, r.sales)) },
+    npm: { group:'収益性', name:'純利益率', unit:'%', need:['ni','sales'], formula:(r)=> pct(div(r.ni, r.sales)) },
+    roa: { group:'収益性', name:'ROA（簡便：営業利益/総資産）', unit:'%', need:['op','ta'], formulaSeries:(series, basis)=>{
+      const res=[];
+      for(let i=0;i<series.length;i++){
+        const cur=series[i], prev=series[i-1];
+        const denom = (basis==='end')? cur.ta : avg(cur.ta, prev?prev.ta:null);
+        res.push( pct(div(cur.op, denom)) );
+      }
+      return res;
+    } },
+    roe: { group:'収益性', name:'ROE（簡便：当期純利益/自己資本(内生)）', unit:'%', need:['ni','netassets','warrants','minority'], formulaSeries:(series, basis)=>{
+      const res=[];
+      for(let i=0;i<series.length;i++){
+        const cur=series[i], prev=series[i-1];
+        const eqCur = equityFrom(cur);
+        const eqPrev = prev? equityFrom(prev) : null;
+        const denom = (basis==='end')? eqCur : avg(eqCur, eqPrev);
+        res.push( pct(div(cur.ni, denom)) );
+      }
+      return res;
+    } },
+    roic:{ group:'収益性', name:'ROIC（簡易NOPAT/投下資本）', unit:'%', need:['op','debt','netassets','warrants','minority'], formulaSeries:(series, basis)=>{
+      const res=[];
+      for(let i=0;i<series.length;i++){
+        const cur=series[i], prev=series[i-1];
+        const nopat = cur.op==null? null : cur.op*0.7;
+        const invCur = (cur.debt==null||equityFrom(cur)==null)? null : (cur.debt + equityFrom(cur));
+        const invPrev = (!prev || prev.debt==null || equityFrom(prev)==null)? null : (prev.debt + equityFrom(prev));
+        const denom = (basis==='end')? invCur : avg(invCur, invPrev);
+        res.push( pct(div(nopat, denom)) );
+      }
+      return res;
+    } },
+
+    eqratio:{ group:'安全性', name:'自己資本比率', unit:'%', need:['netassets','warrants','minority','ta'], formula:(r)=> pct(div(equityFrom(r), r.ta)) },
+    cr:   { group:'安全性', name:'流動比率', unit:'%', need:['ca','cl'], formula:(r)=> pct(div(r.ca, r.cl)) },
+    qr:   { group:'安全性', name:'当座比率', unit:'%', need:['cash','ar_trade','ar_notes','ar_ermc','securities','cl'], formula:(r)=> pct(div((r.cash||0)+(r.ar_trade||0)+(r.ar_notes||0)+(r.ar_ermc||0)+(r.securities||0), r.cl)) },
+    de:   { group:'安全性', name:'D/Eレシオ', unit:'倍', need:['debt','netassets','warrants','minority'], formula:(r)=> val(div(r.debt, equityFrom(r))) },
+    icr:  { group:'安全性', name:'インタレストカバレッジ', unit:'倍', need:['op','non_op_income','non_op_expense','interest_expense'], formula:(r)=> { const ebit = (r.op==null&&r.non_op_income==null&&r.non_op_expense==null)? null : ( (r.op||0) + (r.non_op_income||0) - (r.non_op_expense||0) ); return val(div(ebit, r.interest_expense)); } },
+    fltf: { group:'安全性', name:'固定長期適合率', unit:'%', need:['tfa','noncurrent_liabilities','netassets','warrants','minority'], formula:(r)=> pct(div(r.tfa, (equityFrom(r)||0)+(r.noncurrent_liabilities||0))) },
+
+    // 成長性（YoY）
+    sales_yoy: { group:'成長性', name:'売上成長率（YoY）', unit:'%', need:['sales'], yoyOf:'sales' },
+    op_yoy:    { group:'成長性', name:'営業利益成長率（YoY）', unit:'%', need:['op'], yoyOf:'op' },
+    ni_yoy:    { group:'成長性', name:'純利益成長率（YoY）', unit:'%', need:['ni'], yoyOf:'ni' },
+    ta_yoy:    { group:'成長性', name:'総資産成長率（YoY）', unit:'%', need:['ta'], yoyOf:'ta' },
+    eq_yoy:    { group:'成長性', name:'自己資本成長率（YoY・内生）', unit:'%', need:['netassets','warrants','minority'], yoyOfEq:true },
+    inv_yoy:   { group:'成長性', name:'棚卸資産成長率（YoY・分解合算/合計）', unit:'%', need:['INV'], yoyOfInv:true },
+    eps_yoy:   { group:'成長性', name:'EPS成長率（YoY）', unit:'%', need:['eps'], yoyOf:'eps' },
+    dps_yoy:   { group:'成長性', name:'DPS成長率（YoY）', unit:'%', need:['dps'], yoyOf:'dps' },
+
+    // 株価
+    per: { group:'株価指標', name:'PER', unit:'倍', need:['price','eps'], formula:(r)=> val(div(r.price, r.eps)) },
+    pbr: { group:'株価指標', name:'PBR', unit:'倍', need:['price','netassets','warrants','minority','shares'], formula:(r)=> { const eq = equityFrom(r); const bps = (eq!=null && r.shares!=null && r.shares!==0)? (eq / r.shares) : null; return val(div(r.price, bps)); } },
+  };
+
+  const JP_LABEL = {
+    sales:'売上高', cogs:'売上原価', op:'営業利益', ni:'当期純利益',
+    ca:'流動資産', cl:'流動負債', cash:'現金預金',
+    ar_trade:'売掛金', ar_notes:'受取手形', ar_ermc:'電子記録債権',
+    ap_trade:'買掛金', ap_notes:'支払手形', ap_erd:'電子記録債務',
+    securities:'有価証券（流動資産）',
+    inv_total:'棚卸資産（合計）',
+    inv_merch:'商品', inv_finished:'製品', inv_raw:'原材料', inv_wip:'仕掛品', inv_semi:'半製品', inv_supplies:'貯蔵品',
+    ta:'総資産', netassets:'純資産', warrants:'新株予約権', minority:'非支配株主持分',
+    debt:'有利子負債', noncurrent_liabilities:'固定負債', tfa:'有形固定資産',
+    non_op_income:'営業外収益', non_op_expense:'営業外費用', interest_expense:'支払利息',
+    shares:'発行済株式数', price:'株価', eps:'EPS（1株当たり利益）', dps:'DPS（1株当たり配当）',
+    // 簡便モード専用
+    ar_total:'売上債権（合計）', ap_total:'仕入債務（合計）'
+  };
+
+  const HUMAN_FORMULA = {
+    dso: 'DSO = 365 × 基準売上債権 ÷ 売上高｜基準=期中平均(デフォルト)または期末残高',
+    dio: 'DIO = 365 × 基準棚卸資産 ÷ 売上原価｜基準=期中平均(デフォルト)または期末残高',
+    dpo: 'DPO = 365 × 基準仕入債務 ÷ 仕入高｜仕入高≈ 売上原価 + (当期棚卸資産 − 前期棚卸資産)',
+    ccc: 'CCC = DSO + DIO − DPO',
+    gpm: '売上総利益率 = (売上高 − 売上原価) ÷ 売上高 × 100%',
+    opm: '売上高営業利益率 = 営業利益 ÷ 売上高 × 100%',
+    npm: '純利益率 = 当期純利益 ÷ 売上高 × 100%',
+    roa: 'ROA（簡便）= 営業利益 ÷ 総資産 × 100%｜分母は期中平均（(当期+前期)/2）',
+    roe: 'ROE（簡便）= 当期純利益 ÷ 自己資本[内生] × 100%｜分母は期中平均（(当期+前期)/2）',
+    roic:'ROIC(簡便) = (営業利益×(1−税率30%)) ÷ (有利子負債 + 自己資本[内生]) × 100%｜分母は期中平均（(当期+前期)/2）',
+    eqratio:'自己資本比率 = 自己資本[内生] ÷ 総資産 × 100%',
+    cr: '流動比率 = 流動資産 ÷ 流動負債 × 100%',
+    qr: '当座比率 = (現金預金 + 売掛金 + 受取手形 + 電子記録債権 + 有価証券[流動]) ÷ 流動負債',
+    de: 'D/Eレシオ = 有利子負債 ÷ 自己資本[内生]',
+    icr:'インタレストカバレッジ = EBIT ÷ 支払利息（EBIT＝営業利益＋営業外収益−営業外費用）',
+    fltf:'固定長期適合率 = 有形固定資産 ÷ (自己資本[内生] + 固定負債) × 100%',
+    sales_yoy:'売上成長率(YoY) = (当年売上 − 前年売上) ÷ 前年売上 × 100%',
+    op_yoy:'営業利益成長率(YoY) = (当年営業利益 − 前年営業利益) ÷ 前年営業利益 × 100%',
+    ni_yoy:'純利益成長率(YoY) = (当年純利益 − 前年純利益) ÷ 前年純利益 × 100%',
+    ta_yoy:'総資産成長率(YoY) = (当年総資産 − 前年総資産) ÷ 前年総資産 × 100%',
+    eq_yoy:'自己資本成長率(YoY) = (当年自己資本[内生] − 前年同) ÷ 前年同 × 100%',
+    inv_yoy:'棚卸資産成長率(YoY) = (当年棚卸資産 − 前年棚卸資産) ÷ 前年棚卸資産 × 100%',
+    eps_yoy:'EPS成長率(YoY) = (当年EPS − 前年EPS) ÷ 前年EPS × 100%',
+    dps_yoy:'DPS成長率(YoY) = (当年DPS − 前年DPS) ÷ 前年DPS × 100%',
+    per:'PER = 株価 ÷ EPS',
+    pbr:'PBR = 株価 ÷ BPS（BPS＝自己資本[内生] ÷ 発行済株式数）'
+  };
+
+  const PROMPT_TPLS = {
+    '効率性': `あなたは企業分析の専門家です。以下の{years}年の{metric}（単位: {unit}）の推移データを読み取り、
+1) 効率性の評価（改善/悪化の要因）
+2) ドライバー（主要勘定・運転資本の動き）
+3) 業種ベンチマークと改善施策（3点）
+を日本語で簡潔に述べてください。`,
+    '収益性': `あなたは企業分析の専門家です。以下の{years}年の{metric}（単位: {unit}）の推移データを読み取り、
+1) 収益性の評価（改善/悪化の要因）
+2) デュポン分解の示唆（もし適用可なら）
+3) 改善施策（価格・ミックス・コスト・稼働・稼働率・固定費吸収などから3点）
+を日本語で簡潔に述べてください。`,
+    '安全性': `あなたは企業分析の専門家です。以下の{years}年の{metric}（単位: {unit}）の推移データを読み取り、
+1) 財務安定性の評価（短期/長期）
+2) 資金繰り・負債管理の示唆（コベナンツ・金利感応度含む）
+3) 改善施策（資本政策/運転資本/借換/資産圧縮などから3点）
+を日本語で簡潔に述べてください。`,
+    '成長性': `あなたは企業分析の専門家です。以下の{years}年の{metric}（単位: {unit}）の推移データを読み取り、
+1) 成長トレンドの評価（持続性・ボラティリティ）
+2) 成長ドライバー（新規/既存/価格/数量/為替など）
+3) 成長の質（利益成長との整合/投資とのバランス）
+を日本語で簡潔に述べてください。`,
+    '株価指標': `あなたは企業分析の専門家です。以下の{years}年の{metric}（単位: {unit}）の推移データを読み取り、
+1) バリュエーションの水準評価（同業比較の示唆可）
+2) ファンダメンタルズとの整合（利益/資本効率との関係）
+3) 投資家視点の留意点（イベント・リスク・改善余地）
+を日本語で簡潔に述べてください。`
+  };
+
+  function metricOptionsHtml(){
+    const groups = { '効率性':[], '収益性':[], '安全性':[], '成長性':[], '株価指標':[] };
+    Object.entries(METRICS).forEach(([k,v])=>{ groups[v.group].push({k,v}); });
+    const build = (title, arr)=> `<optgroup label="${title}">` + arr.map(o=>`<option value="${o.k}">${o.v.name}</option>`).join('') + `</optgroup>`;
+    return build('効率性', groups['効率性']) + build('収益性', groups['収益性']) + build('安全性', groups['安全性']) + build('成長性', groups['成長性']) + build('株価指標', groups['株価指標']);
+  }
+
+  // ===== 入力UI生成 =====
+  function rebuildManualInputs(){
+    const mkey = $('metricManual').value; const def = METRICS[mkey];
+    const yoy = isYoYMetric(mkey);
+    const years = buildYears(yoy);
+    const detailMode = document.querySelector('input[name="detailMode"]:checked').value; // strict or simple
+    const layout = $('layout').value; // yearFirst or itemFirst
+    $('metricFormula').textContent = HUMAN_FORMULA[mkey] || '';
+    $('yoyBadge').classList.toggle('hidden', !yoy);
+
+    function buildCompany(prefix){
+      const wrap = prefix==='A'? $('inputsA') : $('inputsB'); wrap.innerHTML='';
+      // 必要入力の列挙（簡便モード時は合計に置換）
+      const need = [...def.need];
+      const items = [];
+      for(const fid of need){
+        if(fid==='AR'){ items.push( detailMode==='simple' ? 'ar_total' : ['ar_trade','ar_notes','ar_ermc'] ); }
+        else if(fid==='AP'){ items.push( detailMode==='simple' ? 'ap_total' : ['ap_trade','ap_notes','ap_erd'] ); }
+        else if(fid==='INV'){ items.push( detailMode==='simple' ? 'inv_total' : ['inv_merch','inv_finished','inv_raw','inv_wip','inv_semi','inv_supplies'] ); }
+        else { items.push(fid); }
+      }
+      // フラット化
+      const flat = items.flat();
+
+      if(layout==='itemFirst'){
+        // 従来：科目ごとに年を横並び
+        flat.forEach(fid=>{
+          const label = JP_LABEL[fid] || fid;
+          const box = document.createElement('div'); box.className='bg-slate-50 rounded-xl p-3 border border-slate-200';
+          let html = `<div class="mb-1 text-sm font-semibold text-slate-700">${label}</div>`;
+          html += `<div class="grid ${yoy?'grid-cols-6':'grid-cols-5'} gap-2">`;
+          years.forEach((y,i)=>{
+            html += `<div class="flex flex-col">
+              <label class="text-[11px] text-slate-500 mb-1">${y}</label>
+              <input inputmode="decimal" step="any" class="field text-right placeholder-slate-400" id="${fid}_${prefix}_${i}" placeholder="0" />
+            </div>`;
+          });
+          html += `</div>`;
+          box.innerHTML = html; wrap.appendChild(box);
+        });
+      } else {
+        // 年ごと：テーブル（行=科目、列=年）
+        const table = document.createElement('table'); table.className='input-grid w-full text-sm';
+        const thead = document.createElement('thead'); const trh = document.createElement('tr');
+        trh.innerHTML = `<th>項目</th>` + years.map(y=>`<th>${y}</th>`).join('');
+        thead.appendChild(trh); table.appendChild(thead);
+        const tbody = document.createElement('tbody');
+        flat.forEach(fid=>{
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${JP_LABEL[fid]||fid}</td>` + years.map((y,i)=>`<td><input inputmode="decimal" step="any" class="field text-right w-full text-base" id="${fid}_${prefix}_${i}" placeholder="0" /></td>`).join('');
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+      }
+
+      // ヒント
+      if(['dso','dio','dpo','ccc'].includes(mkey)){
+        const hint = document.createElement('div'); hint.className='subtle mt-1';
+        hint.textContent = '注: 回転日数は分母に期中平均（(当期+前期)/2）を使用します。先頭年は前期が無いためNAになります。';
+        wrap.appendChild(hint);
+      }
+      if(['roa','roe','roic'].includes(mkey)){
+        const hint2 = document.createElement('div'); hint2.className='subtle mt-1';
+        hint2.textContent = '注: ROA/ROE/ROIC は分母（総資産/自己資本/投下資本）に期中平均（(当期+前期)/2）を使用します。先頭年は前期が無いためNAになります。';
+        wrap.appendChild(hint2);
+      }
+    }
+
+    buildCompany('A');
+    if(document.querySelector('input[name="modeManual"]:checked').value==='compare') buildCompany('B'); else $('inputsB').innerHTML='';
+  }
+
+  // ===== 入力データの読取 =====
+  function readManual(prefix){
+    const mkey = $('metricManual').value; const def = METRICS[mkey];
+    const yoy = isYoYMetric(mkey);
+    const years = buildYears(yoy);
+    const detailMode = document.querySelector('input[name="detailMode"]:checked').value;
+    const modeSimple = detailMode==='simple';
+
+    // YOY計算系は個別処理
+    if(def.yoyOf){
+      const key = def.yoyOf;
+      const vals=[], arr=[];
+      for(let i=0;i<years.length;i++){
+        const v = number($(`${key}_${prefix}_${i}`).value);
+        arr.push({[key]:v});
+      }
+      for(let i=1;i<arr.length;i++){
+        const cur = arr[i][key], prev = arr[i-1][key];
+        vals.push( pct( div( (cur==null||prev==null)? null : (cur - prev), prev ) ) );
+      }
+      return vals;
+    }
+    if(def.yoyOfEq){
+      const vals=[], arr=[];
+      for(let i=0;i<years.length;i++){
+        const r = { netassets:number($(`netassets_${prefix}_${i}`).value), warrants:number($(`warrants_${prefix}_${i}`).value), minority:number($(`minority_${prefix}_${i}`).value) };
+        arr.push(r);
+      }
+      for(let i=1;i<arr.length;i++){
+        const cur = equityFrom(arr[i]), prev = equityFrom(arr[i-1]);
+        vals.push( (cur==null||prev==null)? null : pct(div(cur - prev, prev)) );
+      }
+      return vals;
+    }
+    if(def.yoyOfInv){
+      const vals=[], arr=[];
+      for(let i=0;i<years.length;i++){
+        const rec = {};
+        if(modeSimple){
+          rec.INV = number($(`inv_total_${prefix}_${i}`).value);
+        }else{
+          rec.INV = ['inv_merch','inv_finished','inv_raw','inv_wip','inv_semi','inv_supplies'].map(k=>number($(`${k}_${prefix}_${i}`).value)||0).reduce((a,b)=>a+b,0);
+        }
+        arr.push(rec);
+      }
+      for(let i=1;i<arr.length;i++){
+        const cur = arr[i].INV, prev = arr[i-1].INV;
+        vals.push( (cur==null||prev==null)? null : pct(div(cur - prev, prev)) );
+      }
+      return vals;
+    }
+
+    // 通常/シリーズ系
+    const basis = 'avg'; // 固定：期中平均
+    // series for DSO/DIO/DPO/CCC または単年式
+    if(def.formulaSeries){
+      const series=[];
+      for(let i=0;i<years.length;i++){
+        const r = {};
+        // 汎用に必要項目を集める（AR/AP/INVは合計 or 内訳合算）
+        def.need.forEach(fid=>{
+          if(fid==='AR'){
+            r.AR = modeSimple ? number($(`ar_total_${prefix}_${i}`).value)
+              : (number($(`ar_trade_${prefix}_${i}`).value)||0) + (number($(`ar_notes_${prefix}_${i}`).value)||0) + (number($(`ar_ermc_${prefix}_${i}`).value)||0);
+          } else if(fid==='AP'){
+            r.AP = modeSimple ? number($(`ap_total_${prefix}_${i}`).value)
+              : (number($(`ap_trade_${prefix}_${i}`).value)||0) + (number($(`ap_notes_${prefix}_${i}`).value)||0) + (number($(`ap_erd_${prefix}_${i}`).value)||0);
+          } else if(fid==='INV'){
+            r.INV = modeSimple ? number($(`inv_total_${prefix}_${i}`).value)
+              : ['inv_merch','inv_finished','inv_raw','inv_wip','inv_semi','inv_supplies'].map(k=>number($(`${k}_${prefix}_${i}`).value)||0).reduce((a,b)=>a+b,0);
+          } else {
+            r[fid] = number($(`${fid}_${prefix}_${i}`).value);
+          }
+        });
+        series.push(r);
+      }
+      return def.formulaSeries(series, basis);
+    } else {
+      // 単年式
+      const arr = [];
+      for(let i=0;i<years.length;i++){
+        const r = {};
+        def.need.forEach(fid=>{
+          if(fid==='AR'||fid==='AP'||fid==='INV'){
+            // 単年式にAR/INV/APが来ることは通常ないが保険として合計を代入
+            if(fid==='AR'){ r.AR = modeSimple ? number($(`ar_total_${prefix}_${i}`).value) : (number($(`ar_trade_${prefix}_${i}`).value)||0)+(number($(`ar_notes_${prefix}_${i}`).value)||0)+(number($(`ar_ermc_${prefix}_${i}`).value)||0); }
+            if(fid==='AP'){ r.AP = modeSimple ? number($(`ap_total_${prefix}_${i}`).value) : (number($(`ap_trade_${prefix}_${i}`).value)||0)+(number($(`ap_notes_${prefix}_${i}`).value)||0)+(number($(`ap_erd_${prefix}_${i}`).value)||0); }
+            if(fid==='INV'){ r.INV = modeSimple ? number($(`inv_total_${prefix}_${i}`).value) : ['inv_merch','inv_finished','inv_raw','inv_wip','inv_semi','inv_supplies'].map(k=>number($(`${k}_${prefix}_${i}`).value)||0).reduce((a,b)=>a+b,0); }
+          } else {
+            r[fid] = number($(`${fid}_${prefix}_${i}`).value);
+          }
+        });
+        arr.push(r);
+      }
+      return arr.map(r => METRICS[mkey].formula ? METRICS[mkey].formula(r) : null);
+    }
+  }
+
+  // ===== CSVテンプレとインポート =====
+  function buildTemplateCsv(detailMode){
+    const mkey = $('metricManual').value; const def = METRICS[mkey];
+    const yoy = isYoYMetric(mkey);
+    const years = buildYears(yoy);
+    const header = ['項目', ...years];
+    const rows = [];
+    const need = [...def.need];
+    const items = [];
+    for(const fid of need){
+      if(fid==='AR'){ items.push( detailMode==='simple' ? 'ar_total' : ['ar_trade','ar_notes','ar_ermc'] ); }
+      else if(fid==='AP'){ items.push( detailMode==='simple' ? 'ap_total' : ['ap_trade','ap_notes','ap_erd'] ); }
+      else if(fid==='INV'){ items.push( detailMode==='simple' ? 'inv_total' : ['inv_merch','inv_finished','inv_raw','inv_wip','inv_semi','inv_supplies'] ); }
+      else { items.push(fid); }
+    }
+    const flat = items.flat();
+    flat.forEach(fid=>{
+      rows.push([JP_LABEL[fid]||fid, ...years.map(()=> '')]);
+    });
+    const csv = [header.join(','), ...rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','))].join('\r\n') + '\r\n';
+    return csv;
+  }
+
+  function downloadText(filename, text, mime='text/plain'){
+    const blob = new Blob([new Uint8Array([0xEF,0xBB,0xBF]), text], {type:`${mime};charset=utf-8;`});
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download=filename; a.click(); URL.revokeObjectURL(url);
+  }
+
+  function attachCsvHandlers(){
+    function handler(inputId, prefix){
+      $(inputId).addEventListener('change', async (e)=>{
+        const file = e.target.files?.[0]; if(!file) return;
+        const text = await file.text();
+        const rows = text.replace(/\r\n/g,'\n').split('\n').filter(l=>l.trim()!=='').map(l=>l.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(s=>s.replace(/^"|"$/g,'').replace(/""/g,'"')));
+        if(rows.length<2){ $('msg').textContent='CSVの形式が不正です。'; return; }
+        const header = rows[0]; // ['項目', year1, year2, ...]
+        const mkey = $('metricManual').value; const def = METRICS[mkey];
+        const yoy = isYoYMetric(mkey); const years = buildYears(yoy);
+        // 年度ヘッダ検証
+        const headYears = header.slice(1);
+        const ok = headYears.length===years.length && headYears.every((y,i)=> y===years[i]);
+        if(!ok){ $('msg').textContent='CSVの年度ヘッダが現在の設定と一致しません。最新期やYoY設定を確認してください。'; return; }
+
+        // 行をフィールドへマッピング（日本語ラベルで一致）
+        const labelToId = {};
+        // 構築中の入力要素 id を列挙
+        const inputs = Array.from(document.querySelectorAll(`[id$="_${prefix}_0"]`)).map(el=>el.id.replace(/_[AB]_0$/,''));
+        inputs.forEach(fid => { labelToId[JP_LABEL[fid]||fid] = fid; });
+
+        rows.slice(1).forEach(r=>{
+          const label = r[0]; const fid = labelToId[label];
+          if(!fid) return;
+          years.forEach((_,i)=>{
+            const val = r[i+1] ?? '';
+            const el = $(`${fid}_${prefix}_${i}`);
+            if(el) el.value = val;
+          });
+        });
+        $('msg').textContent='CSVを読み込みました。';
+      });
+    }
+    handler('csvA','A'); handler('csvB','B');
+
+    $('csvTplA').addEventListener('click', ()=>{
+      const mode = document.querySelector('input[name="detailMode"]:checked').value;
+      downloadText('template_A.csv', buildTemplateCsv(mode), 'text/csv');
+    });
+    $('csvTplB').addEventListener('click', ()=>{
+      const mode = document.querySelector('input[name="detailMode"]:checked').value;
+      downloadText('template_B.csv', buildTemplateCsv(mode), 'text/csv');
+    });
+  }
+
+  // ===== 表示とグラフ =====
+  let chart=null;
+  function calcAndRender(){
+    const metricKey = $('metricManual').value; const def = METRICS[metricKey]; const metricName = def.name; const unit = def.unit;
+    const yoy = isYoYMetric(metricKey);
+    const allYearLabels = buildYears(yoy);
+    const years = needsPrevYear(metricKey) ? allYearLabels.slice(1) : allYearLabels;
+    const is2 = document.querySelector('input[name="modeManual"]:checked').value==='compare';
+    const nameA = $('companyA').value.trim()||'会社A'; const nameB = is2? $('companyB').value.trim()||'会社B' : null;
+
+    const valsA = readManual('A'); const valsB = is2? readManual('B') : null;
+    const allNullA = Array.isArray(valsA) && valsA.every(v=>v==null);
+    const allNullB = (!valsB) || (Array.isArray(valsB) && valsB.every(v=>v==null));
+    if(allNullA && allNullB){ $('msg').textContent='入力が不足しています。'; return; }
+    $('msg').textContent='';
+
+    // テーブル
+    $('resultBlock').classList.remove('hidden');
+    $('metaMetric').textContent = metricName; $('metaUnit').textContent = unit; $('metaSrc').textContent = '手入力/CSV';
+    years.forEach((y,i)=>{ const th = $('th'+i); if(th) th.textContent = y; });
+    const body = $('tblBody'); body.innerHTML='';
+    const isPercent = unit==='%' ;
+    function trFor(name, arr){
+      const tr = document.createElement('tr'); tr.className='odd:bg-white even:bg-slate-50';
+      tr.innerHTML = '<td class="px-3 py-2 border-b">'+name+'</td>' + arr.map(v=>`<td class="px-3 py-2 text-right border-b">${v==null?'—':(isPercent?fmtNum(v)+'%':fmtNum(v))}</td>`).join('');
+      return tr;
+    }
+    body.appendChild(trFor(nameA, valsA)); if(valsB) body.appendChild(trFor(nameB, valsB));
+
+    // グラフ
+    const ctx = $('canvas'); if(chart){ chart.destroy(); }
+    const datasets = [{ label:nameA, data:valsA, spanGaps:true, tension:0, borderWidth:2, pointRadius:3, borderColor:'#0ea5e9', backgroundColor:'#0ea5e9', type:'line', order:1 }];
+    if(valsB) datasets.push({ label:nameB, data:valsB, spanGaps:true, tension:0, borderWidth:2, pointRadius:3, borderColor:'#f43f5e', backgroundColor:'#f43f5e', type:'line', order:1 });
+
+    // CCC分解（DSO/DIO/DPO を背景に棒グラフで表示）
+    $('cccSplitBadge').classList.add('hidden');
+    if(metricKey==='ccc'){
+      const basis = 'avg'; // 固定：期中平均
+      function readSeries(prefix){
+        // DSO/DIO/DPO 用のシリーズ読み直し
+        const series = [];
+        const yoyAll = isYoYMetric('dso') ? buildYears(true) : buildYears(false); // ここでは5年前提
+        for(let i=0;i<allYearLabels.length;i++){
+          const r = {};
+          const detailMode = document.querySelector('input[name="detailMode"]:checked').value;
+          const modeSimple = detailMode==='simple';
+          // AR / INV / AP
+          const inv = modeSimple ? number($(`inv_total_${prefix}_${i}`).value) :
+            ['inv_merch','inv_finished','inv_raw','inv_wip','inv_semi','inv_supplies'].map(k=>number($(`${k}_${prefix}_${i}`).value)||0).reduce((a,b)=>a+b,0);
+          const ar = modeSimple ? number($(`ar_total_${prefix}_${i}`).value) :
+            (number($(`ar_trade_${prefix}_${i}`).value)||0) + (number($(`ar_notes_${prefix}_${i}`).value)||0) + (number($(`ar_ermc_${prefix}_${i}`).value)||0);
+          const ap = modeSimple ? number($(`ap_total_${prefix}_${i}`).value) :
+            (number($(`ap_trade_${prefix}_${i}`).value)||0) + (number($(`ap_notes_${prefix}_${i}`).value)||0) + (number($(`ap_erd_${prefix}_${i}`).value)||0);
+          r.AR=ar; r.INV=inv; r.AP=ap; r.sales = number($(`sales_${prefix}_${i}`).value); r.cogs = number($(`cogs_${prefix}_${i}`).value);
+          series.push(r);
+        }
+        return series;
+      }
+      function seriesToVals(series, kind){
+        // kind: dso/dio/dpo
+        const tmpMetric = METRICS[kind];
+        // tmpMetric.formulaSeries expects exact years array length; if YoY metric length differs, we use allYearLabels and slice head when needed
+        const arr = tmpMetric.formulaSeries(series, basis);
+        return yoy ? arr.slice(1) : arr;
+      }
+      const serA = readSeries('A');
+      const dsoA = seriesToVals(serA,'dso'), dioA = seriesToVals(serA,'dio'), dpoA = seriesToVals(serA,'dpo').map(v=> v==null? null : -v); // DPOはマイナスで可視化
+      datasets.unshift(
+        { label:'DSO(A)', data:dsoA, type:'bar', backgroundColor:'rgba(14,165,233,0.25)', borderColor:'rgba(14,165,233,0.3)', stack:'cccA', order:0 },
+        { label:'DIO(A)', data:dioA, type:'bar', backgroundColor:'rgba(34,197,94,0.25)', borderColor:'rgba(34,197,94,0.3)', stack:'cccA', order:0 },
+        { label:'-DPO(A)', data:dpoA, type:'bar', backgroundColor:'rgba(244,63,94,0.25)', borderColor:'rgba(244,63,94,0.3)', stack:'cccA', order:0 }
+      );
+      if(is2){
+        const serB = readSeries('B');
+        const dsoB = seriesToVals(serB,'dso'), dioB = seriesToVals(serB,'dio'), dpoB = seriesToVals(serB,'dpo').map(v=> v==null? null : -v);
+        datasets.unshift(
+          { label:'DSO(B)', data:dsoB, type:'bar', backgroundColor:'rgba(14,165,233,0.15)', borderColor:'rgba(14,165,233,0.2)', stack:'cccB', order:0 },
+          { label:'DIO(B)', data:dioB, type:'bar', backgroundColor:'rgba(34,197,94,0.15)', borderColor:'rgba(34,197,94,0.2)', stack:'cccB', order:0 },
+          { label:'-DPO(B)', data:dpoB, type:'bar', backgroundColor:'rgba(244,63,94,0.15)', borderColor:'rgba(244,63,94,0.2)', stack:'cccB', order:0 }
+        );
+      }
+      $('cccSplitBadge').classList.remove('hidden');
+    }
+
+    chart = new Chart(ctx, {
+      plugins: [whiteBgPlugin, ChartDataLabels],
+      data: { labels: years, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: true, aspectRatio: 2,
+        elements: { line: { tension: 0 } },
+        scales: {
+          y: { beginAtZero: true, stacked: true } // CCC分解棒はstacked、ラインは影響なし
+        },
+        plugins: {
+          legend: { position: 'top' },
+          title: { display: true, text: `${metricName}（${years.length}年推移）` },
+          datalabels: {
+            align: 'top',
+            anchor: 'end',
+            font: { size: 10 },
+            color: '#334155',
+            formatter: (v, ctx) => {
+              const ds = ctx.dataset;
+              // 棒グラフはデータラベルを出しすぎない
+              if(ds.type==='bar') return '';
+              return (v == null ? '' : ( (unit==='%'? fmtNum(v)+'%' : fmtNum(v)) ));
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: (c)=>{
+                const v=c.parsed.y;
+                const label = c.dataset.label || '';
+                if(v==null) return `${label}: —`;
+                return `${label}: ${unit==='%'? fmtNum(v)+'%': fmtNum(v)}`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    $('btnCsv').disabled=false; $('btnPng').disabled=false; $('btnSvg').disabled=false;
+
+    // AIプロンプト（カテゴリ連動）
+    const ser = (arr)=> arr.map((v,i)=>`${years[i]}=${v==null?'NA':(unit==='%'?fmtNum(v)+'%':fmtNum(v)+(unit==='日'?'日':''))}`).join(', ');
+    const tpl = PROMPT_TPLS[def.group] || PROMPT_TPLS['効率性'];
+    let promptHeader = tpl.replace('{years}', years.length).replace('{metric}', metricName).replace('{unit}', unit);
+    let prompt = `${promptHeader}
+
+[会社A: ${nameA}] ${ser(valsA)}`;
+    if(valsB) prompt += `
+[会社B: ${nameB}] ${ser(valsB)}`;
+    // 補足（CCC時のみ）
+    if(metricKey==='ccc'){
+      prompt += `
+
+補足: CCCは DSO + DIO − DPO。グラフでは DSO/DIO を正、DPOを負として積み上げ表示しています。`;
+    }
+    $('aiPrompt').value = prompt;
+  }
+
+  // ===== エクスポート =====
+  function exportCsv(){
+    if(!chart) return; const metricName = $('metaMetric').textContent || 'metric';
+    const unit = $('metaUnit').textContent || '';
+    const labels = chart.data.labels; const sets = chart.data.datasets.filter(ds=>ds.type!=='bar'); // ラインのみ出力
+    const header = ['指標','会社','年', `値${unit==='日'?'(日)':''}`];
+    const lines = [];
+    lines.push(header.map(s => `"${String(s).replace(/"/g,'""')}"`).join(','));
+    sets.forEach(ds=>{
+      ds.data.forEach((v,i)=>{
+        lines.push([metricName, ds.label, labels[i], v==null? '': Number(v).toFixed(1)].map(s => `"${String(s).replace(/"/g,'""')}"`).join(','));
+      });
+    });
+    const csv = lines.join('\r\n') + '\r\n';
+    downloadText(`${metricName.replace(/\s+/g,'')}_${new Date().toISOString().slice(0,10)}.csv`, csv, 'text/csv');
+  }
+  function exportPng(){ if(!chart) return; const url = chart.toBase64Image('image/png', 1.0); const a = document.createElement('a'); a.href=url; a.download='chart.png'; a.click(); }
+  function exportSvg(){
+    if(!chart) return;
+    const labels = chart.data.labels; const sets = chart.data.datasets.filter(ds=>ds.type==='line');
+    const values=[]; sets.forEach(ds => ds.data.forEach(v => { if(v!=null && isFinite(v)) values.push(Number(v)); })); if(values.length===0) return;
+    let vMin = Math.min(...values), vMax = Math.max(...values); if(vMin>0) vMin=0;
+    const width=1200, height=600, margin=60, innerW=width-margin*2, innerH=height-margin*2;
+    const xi = (i)=> margin + (innerW * (labels.length<=1 ? 0.5 : i/(labels.length-1)));
+    const yi = (v)=> { const t=(v - vMin) / (vMax - vMin || 1); return margin + innerH * (1 - t); };
+    const palette = ['#0ea5e9','#f43f5e','#22c55e','#a855f7'];
+    let svg = [];
+    svg.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+    svg.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`);
+    svg.push(`<rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>`);
+    svg.push(`<line x1="${margin}" y1="${height-margin}" x2="${width-margin}" y2="${height-margin}" stroke="#334155" stroke-width="1"/>`);
+    svg.push(`<line x1="${margin}" y1="${margin}" x2="${margin}" y2="${height-margin}" stroke="#334155" stroke-width="1"/>`);
+    for(let k=0;k<=5;k++){ const v = vMin + (vMax - vMin) * (k/5); const y = yi(v);
+      svg.push(`<line x1="${margin}" y1="${y}" x2="${width-margin}" y2="${y}" stroke="#e2e8f0" stroke-width="1"/>`);
+      svg.push(`<text x="${margin-8}" y="${y+4}" font-size="12" text-anchor="end" fill="#475569">${v.toFixed(0)}</text>`);
+    }
+    labels.forEach((lb,i)=>{ const x = xi(i); svg.push(`<text x="${x}" y="${height-margin+18}" font-size="12" text-anchor="middle" fill="#475569">${lb}</text>`); });
+    sets.forEach((ds,di)=>{ const color = ds.borderColor || palette[di%palette.length];
+      const pts = ds.data.map((v,i)=> v==null? null : `${xi(i)},${yi(v)}`);
+      let seg = []; for(let i=0;i<pts.length;i++){ if(pts[i]==null){ if(seg.length>1){ svg.push(`<polyline fill="none" stroke="${color}" stroke-width="2" points="${seg.join(' ')}"/>`); } seg = []; } else { seg.push(pts[i]); } }
+      if(seg.length>1){ svg.push(`<polyline fill="none" stroke="${color}" stroke-width="2" points="${seg.join(' ')}"/>`); }
+      svg.push(`<circle cx="${margin+10}" cy="${margin+16+di*18}" r="5" fill="${color}"/>`);
+      svg.push(`<text x="${margin+24}" y="${margin+20+di*18}" font-size="12" fill="#334155">${ds.label}</text>`);
+    });
+    const title = chart.options.plugins.title.text || '';
+    svg.push(`<text x="${width/2}" y="${margin-20}" font-size="16" text-anchor="middle" font-weight="700" fill="#0f172a">${title}</text>`);
+    svg.push(`</svg>`);
+    downloadText('chart.svg', svg.join('\n'), 'image/svg+xml');
+  }
+
+  function resetAll(){
+    document.querySelector('input[name="modeManual"][value="single"]').checked = true;
+    document.querySelector('input[name="detailMode"][value="strict"]').checked = true;
+    $('layout').value='yearFirst';
+      $('unitManual').value='百万円';
+    $('latestYear').value='';
+    $('companyA').value=''; $('companyB').value='';
+    $('inputsA').innerHTML=''; $('inputsB').innerHTML=''; $('companyBBlock').classList.add('hidden');
+    $('resultBlock').classList.add('hidden'); $('tblBody').innerHTML=''; if(chart){ chart.destroy(); chart=null; }
+    $('btnCsv').disabled=true; $('btnPng').disabled=true; $('btnSvg').disabled=true; $('aiPrompt').value=''; $('msg').textContent='';
+    rebuildManualInputs();
+  }
+
+  // イベント
+  document.querySelectorAll('input[name="modeManual"]').forEach(r => r.addEventListener('change', ()=>{
+    $('companyBBlock').classList.toggle('hidden', document.querySelector('input[name="modeManual"]:checked').value!=='compare'); rebuildManualInputs();
+  }));
+  document.querySelectorAll('input[name="detailMode"]').forEach(r => r.addEventListener('change', rebuildManualInputs));
+  $('layout').addEventListener('change', rebuildManualInputs);
+  $('metricManual').addEventListener('change', rebuildManualInputs);
+  $('latestYear').addEventListener('input', rebuildManualInputs);
+
+  $('btnCalc').addEventListener('click', calcAndRender);
+  $('btnCsv').addEventListener('click', exportCsv);
+  $('btnPng').addEventListener('click', exportPng);
+  $('btnSvg').addEventListener('click', exportSvg);
+  $('btnReset').addEventListener('click', resetAll);
+  $('btnCopy').addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText($('aiPrompt').value); $('msg').textContent='プロンプトをコピーしました。'; }catch(e){ $('msg').textContent='コピーに失敗しました…'; } });
+
+  // 入力欄：フォーカス時にカンマを外し、フォーカスアウト時にカンマ付与（年度は対象外）
+  document.addEventListener('focusin', (e) => {
+    if (e.target.classList && e.target.classList.contains('field') && e.target.inputMode === 'decimal') {
+      e.target.value = String(e.target.value || '').replace(/,/g, '');
+    }
+  });
+  document.addEventListener('blur', (e) => {
+    if (e.target.classList && e.target.classList.contains('field') && e.target.inputMode === 'decimal') {
+      const raw = String(e.target.value || '').replace(/,/g, '');
+      if (raw !== '' && !isNaN(raw)) e.target.value = Number(raw).toLocaleString('ja-JP');
+    }
+  }, true);
+
+  (function init(){
+    $('metricManual').innerHTML = metricOptionsHtml();
+    rebuildManualInputs();
+    attachCsvHandlers();
+  })();
+</script>
+</body>
+</html>
