@@ -6,6 +6,10 @@
   <title>財務指標計算アプリ v1.6.2a</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+  try { if (window.Chart && Chart.defaults) { Chart.defaults.font.size = 12; } } catch(e) {}
+  </script>
+
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
   <script>
   // 固定の白背景（PNG出力時の透過対策）
@@ -660,11 +664,14 @@
         if(rows.length<2){ $('msg').textContent='CSVの形式が不正です。'; return; }
         const header = rows[0]; // ['項目', year1, year2, ...]
         const mkey = $('metricManual').value; const def = METRICS[mkey];
-        const yoy = isYoYMetric(mkey); const years = buildYears(yoy);
-        // 年度ヘッダ検証
-        const headYears = header.slice(1);
-        const ok = headYears.length===years.length && headYears.every((y,i)=> y===years[i]);
-        if(!ok){ $('msg').textContent='CSVの年度ヘッダが現在の設定と一致しません。最新期やYoY設定を確認してください。'; return; }
+        
+const yoy = isYoYMetric(mkey); const years = buildYears(yoy);
+// 年度ヘッダ検証（緩和：CSV末尾が一致していればOK）
+const headYears = header.slice(1);
+const ok = headYears.length>=years.length && headYears.slice(-years.length).every((y,i)=> y===years[i]);
+if(!ok){ $('msg').textContent='CSVの年度ヘッダが現在の設定と一致しません（末尾不一致）。最新期やYoY設定をご確認ください。'; return; }
+const offset = headYears.length - years.length;
+
 
         // 行をフィールドへマッピング（日本語ラベルで一致）
         const labelToId = {};
@@ -676,7 +683,7 @@
           const label = r[0]; const fid = labelToId[label];
           if(!fid) return;
           years.forEach((_,i)=>{
-            const val = r[i+1] ?? '';
+            const val = r[i+1+offset] ?? '';
             const el = $(`${fid}_${prefix}_${i}`);
             if(el) el.value = val;
           });
@@ -871,6 +878,15 @@
     const ser = (arr)=> arr.map((v,i)=>`${years[i]}=${v==null?'NA':(unit==='%'?fmtNum(v)+'%':fmtNum(v)+(unit==='日'?'日':''))}`).join(', ');
     const tpl = PROMPT_TPLS[def.group] || PROMPT_TPLS['効率性'];
     let promptHeader = tpl.replace('{years}', years.length).replace('{metric}', metricName).replace('{unit}', unit);
+
+    let promptHeaderCCC = `あなたは企業分析の専門家です。以下の{years}年の{metric}（単位: {unit}）の推移データを読み取り、
+1) CCC（キャッシュ・コンバージョン・サイクル）の短縮/長期化の要因を、DSO・DIO・DPOの各要素別に説明してください。
+2) 運転資本管理やキャッシュフローへの影響を分析してください。
+3) 改善施策（回収・在庫・支払条件の見直し等）を3点挙げてください。`;
+    if (metricName && metricName.indexOf('キャッシュ・コンバージョン・サイクル') !== -1) {
+      promptHeader = promptHeaderCCC;
+    }
+
     let prompt = `${promptHeader}
 
 [会社A: ${nameA}] ${ser(valsA)}`;
@@ -878,6 +894,36 @@
 [会社B: ${nameB}] ${ser(valsB)}`;
     // 補足（CCC時のみ）
     if(metricKey==='ccc'){
+      // breakdown arrays for CCC
+      function __valsOf(prefix){
+        const basis='avg';
+        const detailMode=document.querySelector('input[name="detailMode"]:checked').value;
+        const modeSimple = detailMode==='simple';
+        const serList=[];
+        for(let i=0;i<allYearLabels.length;i++){
+          const r={};
+          r.INV = modeSimple ? number($(`inv_total_${prefix}_${i}`).value) : ['inv_merch','inv_finished','inv_raw','inv_wip','inv_semi','inv_supplies'].map(k=>number($(`${k}_${prefix}_${i}`).value)||0).reduce((a,b)=>a+b,0);
+          r.AR  = modeSimple ? number($(`ar_total_${prefix}_${i}`).value) : (number($(`ar_trade_${prefix}_${i}`).value)||0)+(number($(`ar_notes_${prefix}_${i}`).value)||0)+(number($(`ar_ermc_${prefix}_${i}`).value)||0);
+          r.AP  = modeSimple ? number($(`ap_total_${prefix}_${i}`).value) : (number($(`ap_trade_${prefix}_${i}`).value)||0)+(number($(`ap_notes_${prefix}_${i}`).value)||0)+(number($(`ap_erd_${prefix}_${i}`).value)||0);
+          r.sales = number($(`sales_${prefix}_${i}`).value);
+          r.cogs  = number($(`cogs_${prefix}_${i}`).value);
+          serList.push(r);
+        }
+        const dso = METRICS.dso.formulaSeries(serList, basis).slice(1);
+        const dio = METRICS.dio.formulaSeries(serList, basis).slice(1);
+        const dpo = METRICS.dpo.formulaSeries(serList, basis).slice(1);
+        const ccc = METRICS.ccc.formulaSeries(serList, basis).slice(1);
+        return {dso,dio,dpo,ccc};
+      }
+      const _A = __valsOf('A');
+      prompt += `
+
+[内訳: ${nameA}] DSO: ${ser(_A.dso)} / DIO: ${ser(_A.dio)} / DPO: ${ser(_A.dpo)} / CCC: ${ser(_A.ccc)}`;
+      if (valsB){
+        const _B = __valsOf('B');
+        prompt += `
+[内訳: ${nameB}] DSO: ${ser(_B.dso)} / DIO: ${ser(_B.dio)} / DPO: ${ser(_B.dpo)} / CCC: ${ser(_B.ccc)}`;
+      }
       prompt += `
 
 補足: CCCは DSO + DIO − DPO。グラフでは DSO/DIO を正、DPOを負として積み上げ表示しています。`;
