@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>財務指標計算アプリ v1.6.2a</title>
+  <title>財務指標計算アプリ v1.6.3</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
@@ -49,7 +49,7 @@
 <body class="bg-slate-50 text-slate-800">
   <div class="max-w-7xl mx-auto p-4 md:p-8">
     <header class="mb-6">
-      <h1 class="text-2xl md:text-3xl font-bold tracking-tight">財務指標アプリ v1.6.2a</h1>
+      <h1 class="text-2xl md:text-3xl font-bold tracking-tight">財務指標アプリ v1.6.3</h1>
       <p class="text-slate-600 mt-1">
         v1.6 では <span class="font-semibold">簡便モード</span>（合計のみ）・<span class="font-semibold">CSVインポート</span>・
         <span class="font-semibold">入力レイアウト切替（年ごと/科目ごと）</span>・
@@ -200,7 +200,7 @@
       </section>
     </div>
 
-    <footer class="mt-8 text-center text-xs text-slate-500">© 2025 財務指標アプリ v1.6.2a </footer>
+    <footer class="mt-8 text-center text-xs text-slate-500">© 2025 財務指標アプリ v1.6.3 </footer>
   </div>
 
 <script>
@@ -604,7 +604,9 @@
         });
         series.push(r);
       }
-      return def.formulaSeries(series, basis);
+      const _vals = def.formulaSeries(series, basis);
+      // 先頭年は前期不足でNAになる指標（平均/差分ベース）はyearsと合わせてカット
+      return needsPrevYear(mkey) ? _vals.slice(1) : _vals;
     } else {
       // 単年式
       const arr = [];
@@ -645,14 +647,21 @@
     flat.forEach(fid=>{
       rows.push([JP_LABEL[fid]||fid, ...years.map(()=> '')]);
     });
-    const csv = [header.join(','), ...rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','))].join('\r\n') + '\r\n';
+    const csv = [header.join(','), ...rows.map(r=> r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(','))].join('\r\n') + '\r\n';
     return csv;
   }
 
   // ▼ 追加：総合テンプレ（全項目×6年）
   function buildMasterTemplateCsvAll(){
-    // 年度は6年（CCC等に合わせて、最新期未入力なら Y1..Y6）
-    const years = buildYears(true);
+    // 常に6年分（最新期が正しく入力されていれば latest-5..latest、未入力なら Y1..Y6）
+    const latestRaw = ($('latestYear').value || '').trim();
+    const latest = parseInt(latestRaw, 10);
+    let years = [];
+    if (!isNaN(latest) && String(latest).length === 4) {
+      for (let i = 5; i >= 0; i--) years.push(String(latest - i));
+    } else {
+      years = ['Y1','Y2','Y3','Y4','Y5','Y6'];
+    }
     const header = ['項目', ...years];
     const keys = Object.keys(JP_LABEL);
     const esc = (s)=> `"${String(s).replace(/"/g,'""')}"`;
@@ -739,7 +748,8 @@ const offset = headYears.length - years.length;
     const isPercent = unit==='%' ;
     function trFor(name, arr){
       const tr = document.createElement('tr'); tr.className='odd:bg-white even:bg-slate-50';
-      tr.innerHTML = '<td class="px-3 py-2 border-b">'+name+'</td>' + arr.map(v=>`<td class="px-3 py-2 text-right border-b">${v==null?'—':(isPercent?fmtNum(v)+'%':fmtNum(v))}</td>`).join('');
+      const _arr = Array.isArray(arr) ? arr.slice(0, years.length) : [];
+      tr.innerHTML = '<td class="px-3 py-2 border-b">'+name+'</td>' + _arr.map(v=>`<td class="px-3 py-2 text-right border-b">${v==null?'—':(isPercent?fmtNum(v)+'%':fmtNum(v))}</td>`).join('');
       return tr;
     }
     
