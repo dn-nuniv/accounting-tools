@@ -733,6 +733,11 @@ const offset = headYears.length - years.length;
       displayValsB = valsB;
       displayYears = years;
     }
+    if (yoy && needsPrevYear(metricKey)) {
+      // YoYは1年シフト済みで返ってくるためスライスせず全件表示に戻す
+      displayValsA = valsA;
+      displayValsB = is2 ? valsB : null;
+    }
     const allNullA = Array.isArray(valsA) && valsA.every(v=>v==null);
     const allNullB = (!valsB) || (Array.isArray(valsB) && valsB.every(v=>v==null));
     if(allNullA && allNullB){ $('msg').textContent='入力が不足しています。'; return; }
